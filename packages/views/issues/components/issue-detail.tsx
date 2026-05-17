@@ -49,6 +49,7 @@ import { StatusIcon, PriorityIcon, StatusPicker, PriorityPicker, StartDatePicker
 import { IssueActionsDropdown, useIssueActions } from "../actions";
 import { ProjectPicker } from "../../projects/components/project-picker";
 import { CommentCard } from "./comment-card";
+import { ExcalidrawPreview, isExcalidrawAttachment } from "./excalidraw-preview";
 import { CommentInput } from "./comment-input";
 import { ResolvedThreadBar } from "./resolved-thread-bar";
 import { collectThreadReplies } from "./thread-utils";
@@ -937,6 +938,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // calling `/api/attachments/{id}`.
   const { data: issueAttachments } = useQuery(issueAttachmentsOptions(id));
 
+  // `.excalidraw` attachments render an inline SVG preview below the
+  // description editor. The full Excalidraw library is dynamically imported
+  // by the preview component so the editor chunk never lands on the issue
+  // page until Stufe 2.
+  const excalidrawAttachments = useMemo(
+    () => (issueAttachments ?? []).filter(isExcalidrawAttachment),
+    [issueAttachments],
+  );
+
   // Sub-issue queries
   const parentIssueId = issue?.parent_issue_id;
   const { data: parentIssue = null } = useQuery({
@@ -1668,6 +1678,14 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             </div>
             {descDragOver && <FileDropOverlay />}
           </div>
+
+          {excalidrawAttachments.length > 0 && (
+            <div className="mt-6 flex flex-col gap-3">
+              {excalidrawAttachments.map((attachment) => (
+                <ExcalidrawPreview key={attachment.id} attachment={attachment} />
+              ))}
+            </div>
+          )}
 
           {/* Sub-issues — Linear-style */}
           {childIssues.length === 0 && (
