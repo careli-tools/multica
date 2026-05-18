@@ -42,6 +42,13 @@
     "preview_unsupported": "This file type can't be previewed.",
     "close": "Close"
   },
+  "excalidraw": {
+    "loading": "Loading diagram…",
+    "render_failed": "Couldn't render this Excalidraw diagram",
+    "open_file": "Open file",
+    "expand": "Expand diagram",
+    "collapse": "Collapse diagram"
+  },
   "link_hover": {
     "copy_link": "Copy link",
     "open_link": "Open link",
