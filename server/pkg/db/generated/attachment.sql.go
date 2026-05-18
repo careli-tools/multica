@@ -447,3 +447,43 @@ func (q *Queries) ListAttachmentsByIssue(ctx context.Context, arg ListAttachment
 	}
 	return items, nil
 }
+
+const updateAttachmentContent = `-- name: UpdateAttachmentContent :one
+UPDATE attachment
+SET size_bytes = $3, content_type = $4
+WHERE id = $1 AND workspace_id = $2
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id
+`
+
+type UpdateAttachmentContentParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	SizeBytes   int64       `json:"size_bytes"`
+	ContentType string      `json:"content_type"`
+}
+
+func (q *Queries) UpdateAttachmentContent(ctx context.Context, arg UpdateAttachmentContentParams) (Attachment, error) {
+	row := q.db.QueryRow(ctx, updateAttachmentContent,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.SizeBytes,
+		arg.ContentType,
+	)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.IssueID,
+		&i.CommentID,
+		&i.UploaderType,
+		&i.UploaderID,
+		&i.Filename,
+		&i.Url,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.CreatedAt,
+		&i.ChatSessionID,
+		&i.ChatMessageID,
+	)
+	return i, err
+}

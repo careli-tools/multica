@@ -214,6 +214,16 @@ func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, content
 	return s.uploadedURL(key), nil
 }
 
+// Replace overwrites an existing object in S3 by re-issuing PutObject on the
+// same key. S3 semantics make PutObject idempotent at the key level: the new
+// body, ContentType, ContentDisposition, etc. replace the old object in full.
+// We surface a separate method (instead of letting callers re-use Upload) so
+// the intent at the call site is unambiguous and so future overwrite-only
+// metadata (e.g. forcing versioning headers) has a single chokepoint.
+func (s *S3Storage) Replace(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
+	return s.Upload(ctx, key, data, contentType, filename)
+}
+
 // uploadedURL returns the URL stored for client consumption after an upload.
 // Priority: CDN domain > custom endpoint > AWS S3 region-qualified host. The CDN
 // domain wins even when a custom endpoint is set so S3-compatible backends

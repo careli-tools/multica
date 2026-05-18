@@ -152,6 +152,14 @@ func (s *LocalStorage) Upload(ctx context.Context, key string, data []byte, cont
 	return fmt.Sprintf("/uploads/%s", key), nil
 }
 
+// Replace overwrites the existing object at key. For local storage this is
+// identical to Upload: os.WriteFile truncates the destination, and the
+// sidecar (when filename is non-empty) is rewritten so Content-Disposition
+// stays in sync after edits.
+func (s *LocalStorage) Replace(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
+	return s.Upload(ctx, key, data, contentType, filename)
+}
+
 func (s *LocalStorage) GetFilePath(key string) string {
 	return filepath.Join(s.uploadDir, key)
 }

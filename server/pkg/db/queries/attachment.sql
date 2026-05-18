@@ -68,5 +68,11 @@ WHERE workspace_id = $2
   AND issue_id IS NULL
   AND id = ANY($3::uuid[]);
 
+-- name: UpdateAttachmentContent :one
+UPDATE attachment
+SET size_bytes = $3, content_type = $4
+WHERE id = $1 AND workspace_id = $2
+RETURNING *;
+
 -- name: DeleteAttachment :exec
 DELETE FROM attachment WHERE id = $1 AND workspace_id = $2;
