@@ -123,7 +123,7 @@ describe("ExcalidrawDrawer", () => {
     }
   });
 
-  it("closes via onOpenChange when the user dismisses the sheet", async () => {
+  it("closes via onOpenChange when the close button is clicked", async () => {
     const onOpenChange = vi.fn();
     function Harness() {
       const [open, setOpen] = useState(true);
@@ -140,8 +140,7 @@ describe("ExcalidrawDrawer", () => {
     render(<Harness />);
     await flushLazy();
 
-    // The shared Sheet renders a close button with sr-only "Close" label.
-    const closeButton = screen.getByRole("button", { name: /close/i });
+    const closeButton = screen.getByRole("button", { name: /close editor/i });
     await userEvent.click(closeButton);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
