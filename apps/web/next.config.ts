@@ -24,7 +24,9 @@ const allowedDevOrigins = process.env.CORS_ALLOWED_ORIGINS
 
 const nextConfig: NextConfig = {
   ...(process.env.STANDALONE === "true" ? { output: "standalone" as const } : {}),
-  transpilePackages: ["@multica/core", "@multica/ui", "@multica/views", "@excalidraw/excalidraw"],
+  // @excalidraw/excalidraw NOT in transpilePackages — it ships ES2020 ESM with import.meta.url for its worker,
+  // and SWC transpilation replaces import.meta.url with file:///ROOT/..., breaking the Worker constructor.
+  transpilePackages: ["@multica/core", "@multica/ui", "@multica/views"],
   ...(allowedDevOrigins && allowedDevOrigins.length > 0
     ? { allowedDevOrigins }
     : {}),
