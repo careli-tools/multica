@@ -1442,8 +1442,7 @@ export class ApiClient {
 
   // Overwrites the bytes of an existing `.excalidraw` attachment in place.
   // The id stays stable across saves so the description editor's inline
-  // preview never needs to rebind. Backend support lands in CAR-711 — until
-  // then this call returns 404/405 and the controller surfaces a toast.
+  // preview never needs to rebind.
   async updateExcalidrawAttachment(
     id: string,
     scene: {

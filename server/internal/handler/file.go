@@ -29,6 +29,18 @@ var extContentTypes = map[string]string{
 
 const maxUploadSize = 100 << 20 // 100 MB
 
+// maxExcalidrawSceneSize caps the body PUT /api/attachments/{id} will accept
+// for in-place Excalidraw saves. Sized so a normal diagram with a handful of
+// embedded raster references (`files`) fits, while a runaway scene with
+// hundreds of inlined data URIs is rejected instead of silently bloating the
+// bucket. Larger diagrams should use linked image attachments, not inline.
+const maxExcalidrawSceneSize = 10 << 20 // 10 MB
+
+// excalidrawContentType is the single allowed Content-Type for the in-place
+// PUT path. Restricting the type here means the route can never be coerced
+// into overwriting an unrelated attachment (e.g. a PDF) with a JSON blob.
+const excalidrawContentType = "application/vnd.excalidraw+json"
+
 // maxPreviewTextSize caps the body the preview proxy will load into memory
 // for text-based types. Anything larger returns 413 and the UI falls back
 // to "please download". Sized so a typical README/source-file fits but a
@@ -580,6 +592,126 @@ func (h *Handler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 
 	h.deleteS3Object(r.Context(), att.Url)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---------------------------------------------------------------------------
+// UpdateAttachmentContent — PUT /api/attachments/{id}
+//
+// In-place overwrite of an Excalidraw attachment body. Same id, same URL,
+// new bytes — so the description-editor inline preview never has to rebind
+// when the user re-opens the editor and saves. Restricted to
+// application/vnd.excalidraw+json so this endpoint cannot be coerced into
+// rewriting arbitrary attachments (PDFs, images) via a crafted PUT.
+// ---------------------------------------------------------------------------
+
+func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request) {
+	if h.Storage == nil {
+		writeError(w, http.StatusServiceUnavailable, "file storage not configured")
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	workspaceID := h.resolveWorkspaceID(r)
+	if workspaceID == "" {
+		writeError(w, http.StatusBadRequest, "workspace_id is required")
+		return
+	}
+
+	attachmentID := chi.URLParam(r, "id")
+	attUUID, ok := parseUUIDOrBadRequest(w, attachmentID, "attachment id")
+	if !ok {
+		return
+	}
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+
+	// Workspace membership gate. The save UI is collaborative (anyone with
+	// access to the issue can edit the diagram), so we don't restrict to the
+	// uploader as DeleteAttachment does — but we do require membership.
+	if _, err := h.getWorkspaceMember(r.Context(), userID, workspaceID); err != nil {
+		writeError(w, http.StatusForbidden, "not a member of this workspace")
+		return
+	}
+
+	att, err := h.Queries.GetAttachment(r.Context(), db.GetAttachmentParams{
+		ID:          attUUID,
+		WorkspaceID: wsUUID,
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+
+	// Type guard: refuse to overwrite anything other than an Excalidraw
+	// scene. Without this, a misbehaving (or hostile) client could PUT a
+	// JSON blob over a PDF / image and silently corrupt unrelated data.
+	if att.ContentType != excalidrawContentType {
+		writeError(w, http.StatusUnsupportedMediaType, "in-place edit only supported for Excalidraw attachments")
+		return
+	}
+
+	// Reject mismatched request Content-Type early so the client gets a
+	// clear 415 instead of a confusing 200 with the wrong type written.
+	if ct := strings.TrimSpace(r.Header.Get("Content-Type")); ct != "" {
+		if idx := strings.Index(ct, ";"); idx >= 0 {
+			ct = strings.TrimSpace(ct[:idx])
+		}
+		if !strings.EqualFold(ct, excalidrawContentType) {
+			writeError(w, http.StatusUnsupportedMediaType, "expected Content-Type "+excalidrawContentType)
+			return
+		}
+	}
+
+	// Read up to maxExcalidrawSceneSize+1 so we can distinguish "exactly at
+	// the cap" from "exceeds the cap" without trusting Content-Length.
+	r.Body = http.MaxBytesReader(w, r.Body, maxExcalidrawSceneSize+1)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "scene too large")
+		return
+	}
+	if int64(len(body)) > maxExcalidrawSceneSize {
+		writeError(w, http.StatusRequestEntityTooLarge, "scene too large")
+		return
+	}
+	if len(body) == 0 {
+		writeError(w, http.StatusBadRequest, "empty body")
+		return
+	}
+
+	key := h.Storage.KeyFromURL(att.Url)
+	if key == "" {
+		slog.Error("attachment has no resolvable storage key", "id", attachmentID, "url", att.Url)
+		writeError(w, http.StatusInternalServerError, "attachment storage key missing")
+		return
+	}
+	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
+		slog.Error("attachment replace failed", "id", attachmentID, "key", key, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save attachment")
+		return
+	}
+
+	updated, err := h.Queries.UpdateAttachmentContent(r.Context(), db.UpdateAttachmentContentParams{
+		ID:          att.ID,
+		WorkspaceID: att.WorkspaceID,
+		SizeBytes:   int64(len(body)),
+		ContentType: excalidrawContentType,
+	})
+	if err != nil {
+		slog.Error("failed to update attachment record", "id", attachmentID, "error", err)
+		// Storage write already succeeded; surface the partial-success URL
+		// so the client at least sees the new bytes on next reload.
+		writeJSON(w, http.StatusOK, h.attachmentToResponse(att))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, h.attachmentToResponse(updated))
 }
 
 // ---------------------------------------------------------------------------
