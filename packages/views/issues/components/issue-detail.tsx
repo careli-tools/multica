@@ -31,6 +31,12 @@ import { useIsMobile } from "@multica/ui/hooks/use-mobile";
 import { ContentEditor, type ContentEditorRef, TitleEditor, useFileDropZone, FileDropOverlay } from "../../editor";
 import { FileUploadButton } from "@multica/ui/components/common/file-upload-button";
 import {
+  ExcalidrawDrawer,
+  NewDiagramButton,
+  OpenExcalidrawProvider,
+  useIssueExcalidraw,
+} from "../../excalidraw";
+import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -1086,6 +1092,21 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   const actions = useIssueActions(issue);
   const handleUpdateField = actions.updateField;
 
+  // Excalidraw editor (CAR-713). Write access tracks workspace membership —
+  // viewers (anyone without a role) only get the read-only path via a
+  // preview click. Toolbar entry-point disappears for them entirely.
+  const canEditIssue = currentUserRole !== null;
+  const excalidraw = useIssueExcalidraw({
+    issueId: id,
+    issueIdentifier: issue?.identifier ?? null,
+    canWrite: canEditIssue,
+    onSaveError: (err) => {
+      toast.error(t(($) => $.detail.excalidraw_save_failed), {
+        description: err.message,
+      });
+    },
+  });
+
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
   // shown for an issue that already has labels attached.
@@ -1650,6 +1671,12 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             </AppLink>
           )}
 
+          <OpenExcalidrawProvider
+            value={{
+              openNew: excalidraw.openNew,
+              openExisting: excalidraw.openExisting,
+            }}
+          >
           <div {...descDropZoneProps} className="relative mt-5 rounded-lg">
             <ContentEditor
               ref={descEditorRef}
@@ -1682,9 +1709,32 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 size="sm"
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
               />
+              {canEditIssue && (
+                <NewDiagramButton
+                  size="sm"
+                  label={t(($) => $.detail.new_diagram_button)}
+                  onClick={excalidraw.openNew}
+                />
+              )}
             </div>
             {descDragOver && <FileDropOverlay />}
+            <ExcalidrawDrawer
+              open={excalidraw.open}
+              onOpenChange={(next) => {
+                if (!next) excalidraw.close();
+              }}
+              title={t(($) => $.detail.excalidraw_drawer_title)}
+              description={t(($) => $.detail.excalidraw_drawer_description)}
+              initialData={excalidraw.initialData}
+              viewModeEnabled={
+                excalidraw.mode.kind === "edit"
+                  ? excalidraw.mode.viewMode
+                  : false
+              }
+              onChange={excalidraw.handleChange}
+            />
           </div>
+          </OpenExcalidrawProvider>
 
           {excalidrawAttachments.length > 0 && (
             <div className="mt-6 flex flex-col gap-3">

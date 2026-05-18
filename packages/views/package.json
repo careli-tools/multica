@@ -13,6 +13,7 @@
     "./common/actor-avatar": "./common/actor-avatar.tsx",
     "./common/markdown": "./common/markdown.tsx",
     "./editor": "./editor/index.ts",
+    "./excalidraw": "./excalidraw/index.ts",
     "./issues/components": "./issues/components/index.ts",
     "./issues/hooks": "./issues/hooks/index.ts",
     "./issues/utils/filter": "./issues/utils/filter.ts",

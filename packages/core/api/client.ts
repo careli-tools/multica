@@ -1388,6 +1388,80 @@ export class ApiClient {
     };
   }
 
+  // Fetches the parsed `.excalidraw` scene JSON for an existing attachment.
+  // Reuses the text-content endpoint (CAR-707.2 / CAR-711 register the MIME
+  // `application/vnd.excalidraw+json` against the same /content proxy). The
+  // body is a serialised Excalidraw scene; parse defensively so a malformed
+  // attachment opens as a blank canvas rather than white-screening the page.
+  async getExcalidrawScene(id: string): Promise<{
+    elements?: readonly unknown[];
+    appState?: Record<string, unknown>;
+    files?: Record<string, unknown>;
+  }> {
+    const res = await this.fetchRaw(`/api/attachments/${id}/content`);
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      return {
+        elements: Array.isArray(parsed.elements)
+          ? (parsed.elements as readonly unknown[])
+          : [],
+        appState:
+          parsed.appState && typeof parsed.appState === "object"
+            ? (parsed.appState as Record<string, unknown>)
+            : {},
+        files:
+          parsed.files && typeof parsed.files === "object"
+            ? (parsed.files as Record<string, unknown>)
+            : {},
+      };
+    } catch {
+      return { elements: [], appState: {}, files: {} };
+    }
+  }
+
+  // Creates a new `.excalidraw` attachment from a serialised scene. Wraps
+  // `uploadFile` with the canonical Excalidraw MIME so backend storage and
+  // future previews dispatch on a single content type. Caller supplies the
+  // file name (typically derived from a timestamp + issue identifier).
+  async createExcalidrawAttachment(
+    issueId: string,
+    filename: string,
+    scene: {
+      elements?: readonly unknown[];
+      appState?: Record<string, unknown>;
+      files?: Record<string, unknown>;
+    },
+  ): Promise<Attachment> {
+    const body = JSON.stringify(scene);
+    const file = new File([body], filename, {
+      type: "application/vnd.excalidraw+json",
+    });
+    return this.uploadFile(file, { issueId });
+  }
+
+  // Overwrites the bytes of an existing `.excalidraw` attachment in place.
+  // The id stays stable across saves so the description editor's inline
+  // preview never needs to rebind. Backend support lands in CAR-711 — until
+  // then this call returns 404/405 and the controller surfaces a toast.
+  async updateExcalidrawAttachment(
+    id: string,
+    scene: {
+      elements?: readonly unknown[];
+      appState?: Record<string, unknown>;
+      files?: Record<string, unknown>;
+    },
+  ): Promise<Attachment> {
+    const raw = await this.fetch<unknown>(`/api/attachments/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/vnd.excalidraw+json" },
+      body: JSON.stringify(scene),
+    });
+    return parseWithFallback(raw, AttachmentResponseSchema, EMPTY_ATTACHMENT, {
+      endpoint: "PUT /api/attachments/{id}",
+    });
+  }
+
   // Projects
   async listProjects(params?: { status?: string }): Promise<ListProjectsResponse> {
     const search = new URLSearchParams();
