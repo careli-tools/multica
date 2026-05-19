@@ -47,6 +47,7 @@
     "loading": "Loading diagram…",
     "render_failed": "Couldn't render this Excalidraw diagram",
     "open_file": "Open file",
+    "edit": "Edit diagram",
     "expand": "Expand diagram",
     "collapse": "Collapse diagram"
   },
