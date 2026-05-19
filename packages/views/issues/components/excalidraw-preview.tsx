@@ -21,11 +21,12 @@ import {
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FileWarning, Loader2, Maximize2, X } from "lucide-react";
+import { ExternalLink, FileWarning, Loader2, Maximize2, Pencil, X } from "lucide-react";
 import type { Attachment } from "@multica/core/types";
 import { cn } from "@multica/ui/lib/utils";
 import { openExternal } from "../../platform";
 import { useT } from "../../i18n";
+import { useOpenExcalidraw } from "../../excalidraw/open-excalidraw-context";
 
 type ExcalidrawModule = typeof import("@excalidraw/excalidraw");
 
@@ -79,6 +80,7 @@ type RenderState =
 
 export function ExcalidrawPreview({ attachment, className }: ExcalidrawPreviewProps) {
   const { t } = useT("editor");
+  const openExcalidraw = useOpenExcalidraw();
   const [state, setState] = useState<RenderState>({ kind: "loading" });
   const [expanded, setExpanded] = useState(false);
   const [darkVersion, setDarkVersion] = useState(0);
@@ -207,17 +209,30 @@ export function ExcalidrawPreview({ attachment, className }: ExcalidrawPreviewPr
         attachment={attachment}
         className={className}
         action={
-          showExpand ? (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              aria-label={t(($) => $.excalidraw.expand)}
-              title={t(($) => $.excalidraw.expand)}
-            >
-              <Maximize2 className="size-3.5" aria-hidden="true" />
-            </button>
-          ) : undefined
+          <div className="flex items-center gap-1">
+            {openExcalidraw ? (
+              <button
+                type="button"
+                onClick={() => openExcalidraw.openExisting(attachment.id)}
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                aria-label={t(($) => $.excalidraw.edit)}
+                title={t(($) => $.excalidraw.edit)}
+              >
+                <Pencil className="size-3.5" aria-hidden="true" />
+              </button>
+            ) : null}
+            {showExpand ? (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                aria-label={t(($) => $.excalidraw.expand)}
+                title={t(($) => $.excalidraw.expand)}
+              >
+                <Maximize2 className="size-3.5" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
         }
       >
         <ScrollableSvg

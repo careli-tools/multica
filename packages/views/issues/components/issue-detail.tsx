@@ -1734,8 +1734,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               onChange={excalidraw.handleChange}
             />
           </div>
-          </OpenExcalidrawProvider>
-
           {excalidrawAttachments.length > 0 && (
             <div className="mt-6 flex flex-col gap-3">
               {excalidrawAttachments.map((attachment) => (
@@ -1743,6 +1741,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               ))}
             </div>
           )}
+
+          </OpenExcalidrawProvider>
 
           {/* Sub-issues — Linear-style */}
           {childIssues.length === 0 && (

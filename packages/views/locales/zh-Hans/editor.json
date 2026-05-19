@@ -47,6 +47,7 @@
     "loading": "加载图表中…",
     "render_failed": "无法渲染该 Excalidraw 图表",
     "open_file": "打开文件",
+    "edit": "编辑图表",
     "expand": "放大图表",
     "collapse": "收起图表"
   },
