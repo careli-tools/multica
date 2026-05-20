@@ -69,9 +69,22 @@ WHERE workspace_id = $2
   AND id = ANY($3::uuid[]);
 
 -- name: UpdateAttachmentContent :one
+-- Unconditional in-place content update. Used only on the backwards-compat
+-- path where the client sends no If-Match header (older bundles): last
+-- write wins, as before CAR-794.
 UPDATE attachment
-SET size_bytes = $3, content_type = $4
+SET size_bytes = $3, content_type = $4, updated_at = now()
 WHERE id = $1 AND workspace_id = $2
+RETURNING *;
+
+-- name: UpdateAttachmentContentIfMatch :one
+-- Optimistic-locking content update (CAR-794): only succeeds while the
+-- row's updated_at still equals the value the client read (carried in the
+-- If-Match header). A concurrent save bumps updated_at, so the losing PUT
+-- matches zero rows -- the handler turns that into 412 Precondition Failed.
+UPDATE attachment
+SET size_bytes = $3, content_type = $4, updated_at = now()
+WHERE id = $1 AND workspace_id = $2 AND updated_at = $5
 RETURNING *;
 
 -- name: DeleteAttachment :exec

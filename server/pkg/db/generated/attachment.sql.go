@@ -20,7 +20,7 @@ VALUES (
   $1, $2, $9, $10, $11,
   $3, $4, $5, $6, $7, $8
 )
-RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at
 `
 
 type CreateAttachmentParams struct {
@@ -66,6 +66,7 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		&i.CreatedAt,
 		&i.ChatSessionID,
 		&i.ChatMessageID,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -85,7 +86,7 @@ func (q *Queries) DeleteAttachment(ctx context.Context, arg DeleteAttachmentPara
 }
 
 const getAttachment = `-- name: GetAttachment :one
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at FROM attachment
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -111,6 +112,7 @@ func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (A
 		&i.CreatedAt,
 		&i.ChatSessionID,
 		&i.ChatMessageID,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -224,7 +226,7 @@ func (q *Queries) ListAttachmentURLsByIssueOrComments(ctx context.Context, issue
 }
 
 const listAttachmentsByChatMessage = `-- name: ListAttachmentsByChatMessage :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at FROM attachment
 WHERE chat_message_id = $1 AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -257,6 +259,7 @@ func (q *Queries) ListAttachmentsByChatMessage(ctx context.Context, arg ListAtta
 			&i.CreatedAt,
 			&i.ChatSessionID,
 			&i.ChatMessageID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +272,7 @@ func (q *Queries) ListAttachmentsByChatMessage(ctx context.Context, arg ListAtta
 }
 
 const listAttachmentsByChatMessageIDs = `-- name: ListAttachmentsByChatMessageIDs :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at FROM attachment
 WHERE chat_message_id = ANY($1::uuid[]) AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -302,6 +305,7 @@ func (q *Queries) ListAttachmentsByChatMessageIDs(ctx context.Context, arg ListA
 			&i.CreatedAt,
 			&i.ChatSessionID,
 			&i.ChatMessageID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -314,7 +318,7 @@ func (q *Queries) ListAttachmentsByChatMessageIDs(ctx context.Context, arg ListA
 }
 
 const listAttachmentsByComment = `-- name: ListAttachmentsByComment :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at FROM attachment
 WHERE comment_id = $1 AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -347,6 +351,7 @@ func (q *Queries) ListAttachmentsByComment(ctx context.Context, arg ListAttachme
 			&i.CreatedAt,
 			&i.ChatSessionID,
 			&i.ChatMessageID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -359,7 +364,7 @@ func (q *Queries) ListAttachmentsByComment(ctx context.Context, arg ListAttachme
 }
 
 const listAttachmentsByCommentIDs = `-- name: ListAttachmentsByCommentIDs :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at FROM attachment
 WHERE comment_id = ANY($1::uuid[]) AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -392,6 +397,7 @@ func (q *Queries) ListAttachmentsByCommentIDs(ctx context.Context, arg ListAttac
 			&i.CreatedAt,
 			&i.ChatSessionID,
 			&i.ChatMessageID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -404,7 +410,7 @@ func (q *Queries) ListAttachmentsByCommentIDs(ctx context.Context, arg ListAttac
 }
 
 const listAttachmentsByIssue = `-- name: ListAttachmentsByIssue :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at FROM attachment
 WHERE issue_id = $1 AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -437,6 +443,7 @@ func (q *Queries) ListAttachmentsByIssue(ctx context.Context, arg ListAttachment
 			&i.CreatedAt,
 			&i.ChatSessionID,
 			&i.ChatMessageID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -450,9 +457,9 @@ func (q *Queries) ListAttachmentsByIssue(ctx context.Context, arg ListAttachment
 
 const updateAttachmentContent = `-- name: UpdateAttachmentContent :one
 UPDATE attachment
-SET size_bytes = $3, content_type = $4
+SET size_bytes = $3, content_type = $4, updated_at = now()
 WHERE id = $1 AND workspace_id = $2
-RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at
 `
 
 type UpdateAttachmentContentParams struct {
@@ -462,6 +469,9 @@ type UpdateAttachmentContentParams struct {
 	ContentType string      `json:"content_type"`
 }
 
+// Unconditional in-place content update. Used only on the backwards-compat
+// path where the client sends no If-Match header (older bundles): last
+// write wins, as before CAR-794.
 func (q *Queries) UpdateAttachmentContent(ctx context.Context, arg UpdateAttachmentContentParams) (Attachment, error) {
 	row := q.db.QueryRow(ctx, updateAttachmentContent,
 		arg.ID,
@@ -484,6 +494,54 @@ func (q *Queries) UpdateAttachmentContent(ctx context.Context, arg UpdateAttachm
 		&i.CreatedAt,
 		&i.ChatSessionID,
 		&i.ChatMessageID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateAttachmentContentIfMatch = `-- name: UpdateAttachmentContentIfMatch :one
+UPDATE attachment
+SET size_bytes = $3, content_type = $4, updated_at = now()
+WHERE id = $1 AND workspace_id = $2 AND updated_at = $5
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at
+`
+
+type UpdateAttachmentContentIfMatchParams struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	SizeBytes   int64              `json:"size_bytes"`
+	ContentType string             `json:"content_type"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Optimistic-locking content update (CAR-794): only succeeds while the
+// row's updated_at still equals the value the client read (carried in the
+// If-Match header). A concurrent save bumps updated_at, so the losing PUT
+// matches zero rows -- the handler turns that into 412 Precondition Failed.
+func (q *Queries) UpdateAttachmentContentIfMatch(ctx context.Context, arg UpdateAttachmentContentIfMatchParams) (Attachment, error) {
+	row := q.db.QueryRow(ctx, updateAttachmentContentIfMatch,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.SizeBytes,
+		arg.ContentType,
+		arg.UpdatedAt,
+	)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.IssueID,
+		&i.CommentID,
+		&i.UploaderType,
+		&i.UploaderID,
+		&i.Filename,
+		&i.Url,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.CreatedAt,
+		&i.ChatSessionID,
+		&i.ChatMessageID,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

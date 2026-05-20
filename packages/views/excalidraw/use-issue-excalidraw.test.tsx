@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { Attachment } from "@multica/core/types";
@@ -146,7 +146,8 @@ describe("useIssueExcalidraw", () => {
       await Promise.resolve();
     });
     expect(createMock).toHaveBeenCalledTimes(1);
-    const [issueIdArg, filenameArg] = createMock.mock.calls[0];
+    // Asserted non-null directly above (toHaveBeenCalledTimes(1)).
+    const [issueIdArg, filenameArg] = createMock.mock.calls[0]!;
     expect(issueIdArg).toBe("issue-1");
     expect(filenameArg).toMatch(/^MUL-713-.*\.excalidraw$/);
     expect(onCreated).toHaveBeenCalledWith("att-new");
@@ -158,7 +159,7 @@ describe("useIssueExcalidraw", () => {
     });
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(updateMock).toHaveBeenCalledTimes(1);
-    expect(updateMock).toHaveBeenCalledWith("att-new", expect.any(Object));
+    expect(updateMock).toHaveBeenCalledWith("att-new", expect.any(Object), undefined);
   });
 
   it("edit mode always PUTs against the provided attachment id", async () => {
@@ -175,7 +176,50 @@ describe("useIssueExcalidraw", () => {
       await Promise.resolve();
     });
     expect(createMock).not.toHaveBeenCalled();
-    expect(updateMock).toHaveBeenCalledWith("att-existing", expect.any(Object));
+    expect(updateMock).toHaveBeenCalledWith("att-existing", expect.any(Object), undefined);
+  });
+
+  it("threads the loaded scene's ETag into saves as If-Match (CAR-794)", async () => {
+    getSceneMock.mockResolvedValue({
+      elements: [],
+      appState: {},
+      files: {},
+      etag: '"etag-v1"',
+    });
+    updateMock.mockResolvedValue({
+      ...makeAttachment("att-1"),
+      updated_at: "2026-05-20T10:00:00.5Z",
+    });
+
+    const { result } = renderHook(
+      () => useIssueExcalidraw({ issueId: "issue-1", canWrite: true }),
+      { wrapper },
+    );
+    act(() => result.current.openExisting("att-1"));
+
+    // Let the scene query settle so its ETag lands in the cache.
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      result.current.handleChange(scene);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // First save echoes the ETag observed when the scene loaded.
+    expect(updateMock).toHaveBeenNthCalledWith(1, "att-1", expect.any(Object), '"etag-v1"');
+
+    await act(async () => {
+      result.current.handleChange({ ...scene, elements: [{ id: "rect2" }] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Second save advances to the ETag returned by the first save.
+    expect(updateMock).toHaveBeenNthCalledWith(
+      2,
+      "att-1",
+      expect.any(Object),
+      "2026-05-20T10:00:00.5Z",
+    );
   });
 
   it("viewMode suppresses saves entirely", async () => {

@@ -507,3 +507,74 @@ func TestIsTextPreviewable(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// UpdateAttachmentContent tests (in-place Excalidraw save + lost-update guard)
+// ---------------------------------------------------------------------------
+
+// newUpdateContentRequest builds a PUT /api/attachments/{id} request carrying
+// an Excalidraw scene body. ifMatch, when non-empty, is sent as the If-Match
+// header so the handler runs the optimistic-locking path.
+func newUpdateContentRequest(t *testing.T, attachmentID, workspaceID, ifMatch string, body []byte) (*http.Request, *httptest.ResponseRecorder) {
+	t.Helper()
+	req := httptest.NewRequest("PUT", "/api/attachments/"+attachmentID, bytes.NewReader(body))
+	req.Header.Set("X-User-ID", testUserID)
+	req.Header.Set("X-Workspace-ID", workspaceID)
+	req.Header.Set("Content-Type", excalidrawContentType)
+	if ifMatch != "" {
+		req.Header.Set("If-Match", ifMatch)
+	}
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", attachmentID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	return req, httptest.NewRecorder()
+}
+
+// TestUpdateAttachmentContent_LostUpdateGuard exercises the CAR-794 ETag /
+// If-Match flow end to end against the database: a save carrying the current
+// ETag wins and the ETag advances, while a later save still built on the now
+// stale ETag is rejected with 412 instead of silently clobbering the winner.
+func TestUpdateAttachmentContent_LostUpdateGuard(t *testing.T) {
+	store := &mockStorage{}
+	origStorage := testHandler.Storage
+	testHandler.Storage = store
+	defer func() { testHandler.Storage = origStorage }()
+
+	id := seedPreviewAttachment(t, store, "scene-key.excalidraw", "diagram.excalidraw", excalidrawContentType, []byte(`{"elements":[]}`))
+
+	// First save without If-Match — the backwards-compat pass-through path.
+	// Still returns 200 and an ETag the next save can build on.
+	req, w := newUpdateContentRequest(t, id, testWorkspaceID, "", []byte(`{"elements":[1]}`))
+	testHandler.UpdateAttachmentContent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("pass-through PUT: status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	etag1 := w.Header().Get("ETag")
+	if etag1 == "" {
+		t.Fatal("pass-through PUT: missing ETag response header")
+	}
+
+	// Second save carries the current ETag — it wins, and the ETag advances.
+	req, w = newUpdateContentRequest(t, id, testWorkspaceID, etag1, []byte(`{"elements":[1,2]}`))
+	testHandler.UpdateAttachmentContent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("matching If-Match PUT: status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	etag2 := w.Header().Get("ETag")
+	if etag2 == "" || etag2 == etag1 {
+		t.Fatalf("ETag did not advance after a winning save: etag1=%q etag2=%q", etag1, etag2)
+	}
+
+	// Third save still carries the now-stale ETag — it must lose with 412.
+	req, w = newUpdateContentRequest(t, id, testWorkspaceID, etag1, []byte(`{"elements":[9,9,9]}`))
+	testHandler.UpdateAttachmentContent(w, req)
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("stale If-Match PUT: status = %d, want 412; body=%s", w.Code, w.Body.String())
+	}
+
+	// A malformed If-Match is a client bug, not a conflict — answer 400.
+	req, w = newUpdateContentRequest(t, id, testWorkspaceID, `"not-a-timestamp"`, []byte(`{"elements":[]}`))
+	testHandler.UpdateAttachmentContent(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed If-Match PUT: status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
