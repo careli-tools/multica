@@ -143,13 +143,24 @@ export function useIssueExcalidraw(
           }
 
           if (targetIdAtSchedule) {
-            const att = await api.updateExcalidrawAttachment(targetIdAtSchedule, scene);
-            // Refresh both the scene cache (so a close-then-reopen sees
-            // the latest bytes) and the issue's attachment list (size /
-            // updated-at columns).
+            // Echo back the ETag observed when the scene was loaded (or
+            // last saved) so the server can reject a save built on a stale
+            // read with 412 instead of clobbering a concurrent edit
+            // (CAR-794). The ETag lives alongside the cached scene.
+            const cached = queryClient.getQueryData<{ etag?: string | null }>(
+              excalidrawKeys.scene(targetIdAtSchedule),
+            );
+            const att = await api.updateExcalidrawAttachment(
+              targetIdAtSchedule,
+              scene,
+              cached?.etag ?? undefined,
+            );
+            // Refresh the scene cache — with the fresh ETag so the next
+            // save's If-Match reflects this write — and the issue's
+            // attachment list (size / updated-at columns).
             queryClient.setQueryData(
               excalidrawKeys.scene(targetIdAtSchedule),
-              scene,
+              { ...scene, etag: att.updated_at ?? null },
             );
             queryClient.invalidateQueries({
               queryKey: issueKeys.attachments(issueId),
@@ -163,7 +174,7 @@ export function useIssueExcalidraw(
           createdIdRef.current = att.id;
           queryClient.setQueryData(
             excalidrawKeys.scene(att.id),
-            scene,
+            { ...scene, etag: att.updated_at ?? null },
           );
           queryClient.invalidateQueries({
             queryKey: issueKeys.attachments(issueId),
@@ -200,8 +211,18 @@ export function useIssueExcalidraw(
     openNew,
     openExisting,
     close,
+    // The scene cache also carries the ETag (CAR-794); strip it back down
+    // to the scene shape the editor's initialData expects.
     initialData: mode.kind === "edit"
-      ? sceneQuery.data ?? (sceneQuery.isLoading ? undefined : { elements: [], appState: {}, files: {} })
+      ? sceneQuery.data
+        ? {
+            elements: sceneQuery.data.elements,
+            appState: sceneQuery.data.appState,
+            files: sceneQuery.data.files,
+          }
+        : sceneQuery.isLoading
+          ? undefined
+          : { elements: [], appState: {}, files: {} }
       : mode.kind === "new"
         ? { elements: [], appState: {}, files: {} }
         : undefined,

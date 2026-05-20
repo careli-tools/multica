@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -67,6 +69,9 @@ type AttachmentResponse struct {
 	ContentType   string  `json:"content_type"`
 	SizeBytes     int64   `json:"size_bytes"`
 	CreatedAt     string  `json:"created_at"`
+	// UpdatedAt is bumped on every content write and is the value the
+	// ETag / If-Match lost-update guard compares against (CAR-794).
+	UpdatedAt string `json:"updated_at"`
 }
 
 func (h *Handler) attachmentToResponse(a db.Attachment) AttachmentResponse {
@@ -81,6 +86,7 @@ func (h *Handler) attachmentToResponse(a db.Attachment) AttachmentResponse {
 		ContentType:  a.ContentType,
 		SizeBytes:    a.SizeBytes,
 		CreatedAt:    a.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:    a.UpdatedAt.Time.UTC().Format(time.RFC3339Nano),
 	}
 	if h.CFSigner != nil {
 		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(30*time.Minute))
@@ -463,6 +469,9 @@ func (h *Handler) GetAttachmentContent(w http.ResponseWriter, r *http.Request) {
 	// when a user explicitly opens a preview.
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// ETag carries the attachment's updated_at so the Excalidraw editor can
+	// echo it back as If-Match on the next save (CAR-794 lost-update guard).
+	w.Header().Set("ETag", attachmentETag(att))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 	if _, err := w.Write(body); err != nil {
 		slog.Error("failed to write attachment preview body", "id", attachmentID, "error", err)
@@ -692,27 +701,81 @@ func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "attachment storage key missing")
 		return
 	}
-	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
-		slog.Error("attachment replace failed", "id", attachmentID, "key", key, "error", err)
+
+	// Lost-update guard (CAR-794). The DB row carries an updated_at that is
+	// bumped on every content write; the editor reads it as an ETag and
+	// echoes it back here via If-Match. We run the metadata UPDATE *before*
+	// the storage write so a losing PUT is rejected with 412 and never
+	// overwrites the scene bytes a concurrent save just stored. A client
+	// that sends no If-Match keeps the legacy last-write-wins behaviour —
+	// that path is logged so stale bundles can be tracked as they age out.
+	var updated db.Attachment
+	ifMatch := strings.TrimSpace(r.Header.Get("If-Match"))
+	if ifMatch != "" {
+		expected, valid := parseIfMatch(ifMatch)
+		if !valid {
+			writeError(w, http.StatusBadRequest, "malformed If-Match header")
+			return
+		}
+		updated, err = h.Queries.UpdateAttachmentContentIfMatch(r.Context(), db.UpdateAttachmentContentIfMatchParams{
+			ID:          att.ID,
+			WorkspaceID: att.WorkspaceID,
+			SizeBytes:   int64(len(body)),
+			ContentType: excalidrawContentType,
+			UpdatedAt:   expected,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusPreconditionFailed, "attachment was modified by another save; reload and retry")
+			return
+		}
+	} else {
+		slog.Warn("attachment PUT without If-Match — lost-update protection skipped", "id", attachmentID)
+		updated, err = h.Queries.UpdateAttachmentContent(r.Context(), db.UpdateAttachmentContentParams{
+			ID:          att.ID,
+			WorkspaceID: att.WorkspaceID,
+			SizeBytes:   int64(len(body)),
+			ContentType: excalidrawContentType,
+		})
+	}
+	if err != nil {
+		slog.Error("failed to update attachment record", "id", attachmentID, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to save attachment")
 		return
 	}
 
-	updated, err := h.Queries.UpdateAttachmentContent(r.Context(), db.UpdateAttachmentContentParams{
-		ID:          att.ID,
-		WorkspaceID: att.WorkspaceID,
-		SizeBytes:   int64(len(body)),
-		ContentType: excalidrawContentType,
-	})
-	if err != nil {
-		slog.Error("failed to update attachment record", "id", attachmentID, "error", err)
-		// Storage write already succeeded; surface the partial-success URL
-		// so the client at least sees the new bytes on next reload.
-		writeJSON(w, http.StatusOK, h.attachmentToResponse(att))
+	// Metadata UPDATE won the optimistic-lock check — commit the bytes.
+	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
+		slog.Error("attachment replace failed after metadata update", "id", attachmentID, "key", key, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save attachment")
 		return
 	}
 
+	w.Header().Set("ETag", attachmentETag(updated))
 	writeJSON(w, http.StatusOK, h.attachmentToResponse(updated))
+}
+
+// attachmentETag derives a strong ETag from updated_at. updated_at is bumped
+// on every content write, so byte-equality of two ETags is exactly the
+// lost-update check the If-Match guard needs. Format is an RFC3339Nano
+// instant in double quotes, e.g. `"2026-05-20T17:21:44.123456Z"`.
+func attachmentETag(a db.Attachment) string {
+	return `"` + a.UpdatedAt.Time.UTC().Format(time.RFC3339Nano) + `"`
+}
+
+// parseIfMatch turns an If-Match request header into the timestamp the
+// client last observed. It accepts the ETag this handler emits — an
+// RFC3339Nano instant wrapped in double quotes, optionally with a weak
+// `W/` prefix — and tolerates a bare unquoted timestamp. Returns ok=false
+// for anything that does not parse, so the caller can answer 400.
+func parseIfMatch(v string) (pgtype.Timestamptz, bool) {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "W/")
+	v = strings.Trim(v, `"`)
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return pgtype.Timestamptz{}, false
+	}
+	return pgtype.Timestamptz{Time: t, Valid: true}, true
 }
 
 // ---------------------------------------------------------------------------

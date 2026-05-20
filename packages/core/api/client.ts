@@ -244,6 +244,17 @@ export class PreviewUnsupportedError extends Error {
   }
 }
 
+// Thrown by updateExcalidrawAttachment when the server answers 412 Precondition
+// Failed: another tab/user saved the same diagram since this editor loaded it
+// (CAR-794 lost-update guard). The host maps it to a "reload and retry" toast
+// rather than a generic save failure.
+export class AttachmentConflictError extends Error {
+  constructor() {
+    super("attachment was modified by another save; reload and retry");
+    this.name = "AttachmentConflictError";
+  }
+}
+
 export class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
@@ -1393,12 +1404,20 @@ export class ApiClient {
   // `application/vnd.excalidraw+json` against the same /content proxy). The
   // body is a serialised Excalidraw scene; parse defensively so a malformed
   // attachment opens as a blank canvas rather than white-screening the page.
+  //
+  // `etag` is the server's ETag header (CAR-794) — the scene's `updated_at`.
+  // The editor holds it and echoes it back as `If-Match` on the next save so
+  // a concurrent edit is detected instead of silently overwritten. It is
+  // `null` against an older backend that does not emit the header; the save
+  // path then degrades to last-write-wins.
   async getExcalidrawScene(id: string): Promise<{
     elements?: readonly unknown[];
     appState?: Record<string, unknown>;
     files?: Record<string, unknown>;
+    etag: string | null;
   }> {
     const res = await this.fetchRaw(`/api/attachments/${id}/content`);
+    const etag = res.headers.get("ETag");
     const text = await res.text();
     try {
       const parsed = JSON.parse(text) as Record<string, unknown>;
@@ -1414,9 +1433,10 @@ export class ApiClient {
           parsed.files && typeof parsed.files === "object"
             ? (parsed.files as Record<string, unknown>)
             : {},
+        etag,
       };
     } catch {
-      return { elements: [], appState: {}, files: {} };
+      return { elements: [], appState: {}, files: {}, etag };
     }
   }
 
@@ -1443,6 +1463,12 @@ export class ApiClient {
   // Overwrites the bytes of an existing `.excalidraw` attachment in place.
   // The id stays stable across saves so the description editor's inline
   // preview never needs to rebind.
+  //
+  // `ifMatch` is the ETag the editor last observed (from getExcalidrawScene
+  // or a prior save's `updated_at`). When supplied it is sent as `If-Match`
+  // so the server can reject a save built on a stale read with 412 — surfaced
+  // here as AttachmentConflictError (CAR-794). Omit it only when no ETag is
+  // known; the server then falls back to last-write-wins.
   async updateExcalidrawAttachment(
     id: string,
     scene: {
@@ -1450,12 +1476,25 @@ export class ApiClient {
       appState?: Record<string, unknown>;
       files?: Record<string, unknown>;
     },
+    ifMatch?: string,
   ): Promise<Attachment> {
-    const raw = await this.fetch<unknown>(`/api/attachments/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/vnd.excalidraw+json" },
-      body: JSON.stringify(scene),
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": "application/vnd.excalidraw+json",
+    };
+    if (ifMatch) headers["If-Match"] = ifMatch;
+    let raw: unknown;
+    try {
+      raw = await this.fetch<unknown>(`/api/attachments/${id}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(scene),
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 412) {
+        throw new AttachmentConflictError();
+      }
+      throw err;
+    }
     return parseWithFallback(raw, AttachmentResponseSchema, EMPTY_ATTACHMENT, {
       endpoint: "PUT /api/attachments/{id}",
     });
