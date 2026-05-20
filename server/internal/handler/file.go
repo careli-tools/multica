@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -67,6 +69,11 @@ type AttachmentResponse struct {
 	ContentType   string  `json:"content_type"`
 	SizeBytes     int64   `json:"size_bytes"`
 	CreatedAt     string  `json:"created_at"`
+	// UpdatedAt doubles as the optimistic-locking ETag for in-place edits.
+	// The client stores it and echoes it back as If-Match on the next PUT
+	// (see UpdateAttachmentContent). Serialised with sub-second precision —
+	// see attachmentToResponse for why that precision is load-bearing.
+	UpdatedAt string `json:"updated_at"`
 }
 
 func (h *Handler) attachmentToResponse(a db.Attachment) AttachmentResponse {
@@ -81,6 +88,12 @@ func (h *Handler) attachmentToResponse(a db.Attachment) AttachmentResponse {
 		ContentType:  a.ContentType,
 		SizeBytes:    a.SizeBytes,
 		CreatedAt:    a.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		// RFC3339Nano (not the second-precision format used for CreatedAt):
+		// updated_at round-trips back through If-Match into a timestamptz
+		// equality check. Truncating to whole seconds would make the echoed
+		// value differ from the stored microsecond-precision row and every
+		// concurrent-save check would fail with a spurious 412.
+		UpdatedAt: a.UpdatedAt.Time.UTC().Format(time.RFC3339Nano),
 	}
 	if h.CFSigner != nil {
 		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(30*time.Minute))
@@ -376,6 +389,12 @@ func (h *Handler) GetAttachmentByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Expose the optimistic-locking token as a standard ETag too, so an
+	// HTTP-aware client can use If-Match directly. The JSON `updated_at`
+	// field carries the same value for clients that read the body.
+	if tag := formatAttachmentETag(att.UpdatedAt); tag != "" {
+		w.Header().Set("ETag", tag)
+	}
 	writeJSON(w, http.StatusOK, h.attachmentToResponse(att))
 }
 
@@ -692,27 +711,107 @@ func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "attachment storage key missing")
 		return
 	}
-	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
-		slog.Error("attachment replace failed", "id", attachmentID, "key", key, "error", err)
+
+	// CAR-794 — Lost-Update-Protection. The save UI is collaborative: two
+	// tabs can PUT the same scene concurrently and, without a version check,
+	// the second writer silently clobbers the first. The client echoes the
+	// attachment's last-seen `updated_at` back as an If-Match header; we
+	// refuse the write if the row has moved on since that read.
+	//
+	// If-Match is intentionally optional. A desktop build predates any
+	// server it eventually talks to (see API Response Compatibility in
+	// CLAUDE.md), so an older client that never learned the header must
+	// still be able to save — it just does so without conflict detection.
+	var expectedUpdatedAt pgtype.Timestamptz
+	if ifMatch := parseIfMatch(r.Header.Get("If-Match")); ifMatch != "" {
+		t, perr := time.Parse(time.RFC3339Nano, ifMatch)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "invalid If-Match header: expected an RFC3339 timestamp ETag")
+			return
+		}
+		expectedUpdatedAt = pgtype.Timestamptz{Time: t, Valid: true}
+
+		// Fast-path conflict check against the row we already loaded. This
+		// rejects the common (sequential) two-tab conflict *before* the
+		// storage write, so the loser's bytes never overwrite the winner's.
+		// The conditional in UpdateAttachmentContent below remains the
+		// authoritative guard for the narrow read-to-write race.
+		if !att.UpdatedAt.Time.Equal(t) {
+			w.Header().Set("ETag", formatAttachmentETag(att.UpdatedAt))
+			writeError(w, http.StatusPreconditionFailed, "attachment was modified by someone else; reload and retry")
+			return
+		}
+	}
+
+	// DB-first ordering is deliberate. The conditional UPDATE atomically
+	// elects a single winner among concurrent PUTs; only that winner reaches
+	// the storage write below. Writing storage first would let every racing
+	// request clobber the bucket and only *then* discover the conflict —
+	// last-write-wins at the storage layer, exactly what this fix removes.
+	updated, err := h.Queries.UpdateAttachmentContent(r.Context(), db.UpdateAttachmentContentParams{
+		ID:                att.ID,
+		WorkspaceID:       att.WorkspaceID,
+		SizeBytes:         int64(len(body)),
+		ContentType:       excalidrawContentType,
+		ExpectedUpdatedAt: expectedUpdatedAt,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Zero rows matched. With an If-Match present this is a lost-update
+		// conflict (the row advanced between our read and this write);
+		// without one the only way to match zero rows is the attachment
+		// having been deleted concurrently.
+		if expectedUpdatedAt.Valid {
+			w.Header().Set("ETag", formatAttachmentETag(att.UpdatedAt))
+			writeError(w, http.StatusPreconditionFailed, "attachment was modified by someone else; reload and retry")
+			return
+		}
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+	if err != nil {
+		slog.Error("failed to update attachment record", "id", attachmentID, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to save attachment")
 		return
 	}
 
-	updated, err := h.Queries.UpdateAttachmentContent(r.Context(), db.UpdateAttachmentContentParams{
-		ID:          att.ID,
-		WorkspaceID: att.WorkspaceID,
-		SizeBytes:   int64(len(body)),
-		ContentType: excalidrawContentType,
-	})
-	if err != nil {
-		slog.Error("failed to update attachment record", "id", attachmentID, "error", err)
-		// Storage write already succeeded; surface the partial-success URL
-		// so the client at least sees the new bytes on next reload.
-		writeJSON(w, http.StatusOK, h.attachmentToResponse(att))
+	// Metadata is committed and this request owns the write. Overwrite the
+	// stored bytes last. A failure here leaves updated_at/size_bytes briefly
+	// ahead of the bucket; the next successful save reconciles both.
+	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
+		slog.Error("attachment replace failed after metadata update", "id", attachmentID, "key", key, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save attachment")
 		return
 	}
 
+	w.Header().Set("ETag", formatAttachmentETag(updated.UpdatedAt))
 	writeJSON(w, http.StatusOK, h.attachmentToResponse(updated))
+}
+
+// parseIfMatch normalises an If-Match header value down to the bare ETag
+// payload. It tolerates the optional weak-validator prefix and the
+// surrounding double quotes mandated by RFC 7232, so a spec-compliant client
+// and one that sends the raw updated_at string both interoperate. An empty
+// header or the wildcard "*" yields "" (no precondition).
+func parseIfMatch(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" || v == "*" {
+		return ""
+	}
+	v = strings.TrimSpace(strings.TrimPrefix(v, "W/"))
+	v = strings.Trim(v, "\"")
+	return strings.TrimSpace(v)
+}
+
+// formatAttachmentETag renders an attachment's updated_at as a strong,
+// double-quoted ETag. RFC3339Nano is lossless for the microsecond precision
+// Postgres stores, so the value round-trips through the client and back into
+// a timestamptz equality check without drift. Returns "" for a NULL/zero
+// timestamp so callers can skip emitting an empty header.
+func formatAttachmentETag(ts pgtype.Timestamptz) string {
+	if !ts.Valid {
+		return ""
+	}
+	return "\"" + ts.Time.UTC().Format(time.RFC3339Nano) + "\""
 }
 
 // ---------------------------------------------------------------------------

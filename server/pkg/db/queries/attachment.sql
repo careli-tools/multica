@@ -69,9 +69,18 @@ WHERE workspace_id = $2
   AND id = ANY($3::uuid[]);
 
 -- name: UpdateAttachmentContent :one
+-- In-place overwrite of an attachment's bytes (Excalidraw save). `updated_at`
+-- is always bumped so the ETag advances on every write. The expected_updated_at
+-- guard is the authoritative optimistic-lock: when the client sends an
+-- If-Match the UPDATE matches zero rows on a stale write (-> 412); when it is
+-- NULL (older client without the header) the guard is skipped (pass-through).
 UPDATE attachment
-SET size_bytes = $3, content_type = $4
+SET size_bytes = $3, content_type = $4, updated_at = now()
 WHERE id = $1 AND workspace_id = $2
+  AND (
+    sqlc.narg(expected_updated_at)::timestamptz IS NULL
+    OR updated_at = sqlc.narg(expected_updated_at)::timestamptz
+  )
 RETURNING *;
 
 -- name: DeleteAttachment :exec
