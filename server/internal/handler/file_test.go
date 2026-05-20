@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -576,5 +577,93 @@ func TestUpdateAttachmentContent_LostUpdateGuard(t *testing.T) {
 	testHandler.UpdateAttachmentContent(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("malformed If-Match PUT: status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// failingMockStorage wraps mockStorage and injects a configurable error on
+// Replace so tests can exercise the Storage.Replace failure path.
+type failingMockStorage struct {
+	mockStorage
+	failReplace error
+}
+
+func (m *failingMockStorage) Replace(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
+	if m.failReplace != nil {
+		return "", m.failReplace
+	}
+	return m.mockStorage.Replace(ctx, key, data, contentType, filename)
+}
+
+// TestUpdateAttachmentContent_StorageFailureRollback verifies CAR-797: when
+// Storage.Replace fails after the metadata UPDATE (both If-Match and legacy
+// paths), the handler rolls back size_bytes/updated_at to the previous values
+// so the DB row stays consistent with the blob content.
+func TestUpdateAttachmentContent_StorageFailureRollback(t *testing.T) {
+	t.Run("if-match-path", func(t *testing.T) {
+		testStorageFailureRollback(t, true)
+	})
+	t.Run("legacy-path", func(t *testing.T) {
+		testStorageFailureRollback(t, false)
+	})
+}
+
+func testStorageFailureRollback(t *testing.T, withIfMatch bool) {
+	t.Helper()
+
+	store := &failingMockStorage{}
+	origStorage := testHandler.Storage
+	testHandler.Storage = store
+	defer func() { testHandler.Storage = origStorage }()
+
+	originalBody := []byte(`{"elements":[1]}`)
+	id := seedPreviewAttachment(t, &store.mockStorage, "scene-key.excalidraw", "diagram.excalidraw", excalidrawContentType, originalBody)
+
+	// Read original DB state before the PUT.
+	var origSizeBytes int64
+	var origUpdatedAt time.Time
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT size_bytes, updated_at FROM attachment WHERE id = $1`, parseUUID(id),
+	).Scan(&origSizeBytes, &origUpdatedAt); err != nil {
+		t.Fatalf("read original row: %v", err)
+	}
+
+	// Make Storage.Replace fail.
+	store.failReplace = fmt.Errorf("simulated storage failure")
+
+	var req *http.Request
+	var w *httptest.ResponseRecorder
+	if withIfMatch {
+		etag := fmt.Sprintf(`"%s"`, origUpdatedAt.UTC().Format(time.RFC3339Nano))
+		req, w = newUpdateContentRequest(t, id, testWorkspaceID, etag, []byte(`{"elements":[1,2]}`))
+	} else {
+		req, w = newUpdateContentRequest(t, id, testWorkspaceID, "", []byte(`{"elements":[1,2]}`))
+	}
+	testHandler.UpdateAttachmentContent(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+
+	// DB row must carry the original size_bytes/updated_at after the rollback.
+	var dbSizeBytes int64
+	var dbUpdatedAt time.Time
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT size_bytes, updated_at FROM attachment WHERE id = $1`, parseUUID(id),
+	).Scan(&dbSizeBytes, &dbUpdatedAt); err != nil {
+		t.Fatalf("read row after rollback: %v", err)
+	}
+	if dbSizeBytes != origSizeBytes {
+		t.Errorf("size_bytes after rollback = %d, want %d (original)", dbSizeBytes, origSizeBytes)
+	}
+	if !dbUpdatedAt.Equal(origUpdatedAt) {
+		t.Errorf("updated_at after rollback = %v, want %v (original)", dbUpdatedAt, origUpdatedAt)
+	}
+
+	// The storage file should still hold the original bytes (Replace never ran).
+	got, err := io.ReadAll(io.NopCloser(bytes.NewReader(store.files["scene-key.excalidraw"])))
+	if err != nil {
+		t.Fatalf("read storage: %v", err)
+	}
+	if !bytes.Equal(got, originalBody) {
+		t.Errorf("storage bytes = %q, want %q", got, originalBody)
 	}
 }

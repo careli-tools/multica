@@ -746,6 +746,34 @@ func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request
 	// Metadata UPDATE won the optimistic-lock check — commit the bytes.
 	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
 		slog.Error("attachment replace failed after metadata update", "id", attachmentID, "key", key, "error", err)
+
+		// CAR-797: storage write failed but metadata was already advanced.
+		// Revert size_bytes / updated_at so the DB row stays consistent
+		// with the blob content. Use a request-independent context so the
+		// rollback still runs when the client has disconnected.
+		reverted, revertErr := h.Queries.RevertAttachmentContent(context.WithoutCancel(r.Context()), db.RevertAttachmentContentParams{
+			ID:          att.ID,
+			WorkspaceID: att.WorkspaceID,
+			SizeBytes:   att.SizeBytes,
+			UpdatedAt:   att.UpdatedAt,
+			UpdatedAt_2: updated.UpdatedAt,
+		})
+		if revertErr != nil {
+			slog.Error("attachment row is diverged after storage failure — rollback also failed",
+				"id", attachmentID,
+				"storage_key", key,
+				"db_size_bytes", updated.SizeBytes,
+				"prev_size_bytes", att.SizeBytes,
+				"rollback_error", revertErr,
+			)
+		} else {
+			slog.Warn("attachment storage write failed; metadata rolled back",
+				"id", attachmentID,
+				"key", key,
+				"reverted_size_bytes", reverted.SizeBytes,
+			)
+		}
+
 		writeError(w, http.StatusInternalServerError, "failed to save attachment")
 		return
 	}

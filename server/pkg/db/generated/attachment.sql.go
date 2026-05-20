@@ -455,6 +455,53 @@ func (q *Queries) ListAttachmentsByIssue(ctx context.Context, arg ListAttachment
 	return items, nil
 }
 
+const revertAttachmentContent = `-- name: RevertAttachmentContent :one
+UPDATE attachment
+SET size_bytes = $3, updated_at = $4
+WHERE id = $1 AND workspace_id = $2 AND updated_at = $5
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at
+`
+
+type RevertAttachmentContentParams struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	SizeBytes   int64              `json:"size_bytes"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	UpdatedAt_2 pgtype.Timestamptz `json:"updated_at_2"`
+}
+
+// Rollback content metadata after a storage write failure (CAR-797).
+// Only succeeds while the row's updated_at still equals the value set by the
+// failed write — a concurrent save would have bumped updated_at again, and
+// reverting over it would lose that valid write.
+func (q *Queries) RevertAttachmentContent(ctx context.Context, arg RevertAttachmentContentParams) (Attachment, error) {
+	row := q.db.QueryRow(ctx, revertAttachmentContent,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.SizeBytes,
+		arg.UpdatedAt,
+		arg.UpdatedAt_2,
+	)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.IssueID,
+		&i.CommentID,
+		&i.UploaderType,
+		&i.UploaderID,
+		&i.Filename,
+		&i.Url,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.CreatedAt,
+		&i.ChatSessionID,
+		&i.ChatMessageID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateAttachmentContent = `-- name: UpdateAttachmentContent :one
 UPDATE attachment
 SET size_bytes = $3, content_type = $4, updated_at = now()

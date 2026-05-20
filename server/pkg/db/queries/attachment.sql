@@ -87,5 +87,15 @@ SET size_bytes = $3, content_type = $4, updated_at = now()
 WHERE id = $1 AND workspace_id = $2 AND updated_at = $5
 RETURNING *;
 
+-- name: RevertAttachmentContent :one
+-- Rollback content metadata after a storage write failure (CAR-797).
+-- Only succeeds while the row's updated_at still equals the value set by the
+-- failed write — a concurrent save would have bumped updated_at again, and
+-- reverting over it would lose that valid write.
+UPDATE attachment
+SET size_bytes = $3, updated_at = $4
+WHERE id = $1 AND workspace_id = $2 AND updated_at = $5
+RETURNING *;
+
 -- name: DeleteAttachment :exec
 DELETE FROM attachment WHERE id = $1 AND workspace_id = $2;
