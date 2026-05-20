@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiError } from "./client";
+import { ApiClient, ApiError, AttachmentConflictError } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -320,6 +320,71 @@ describe("ApiClient", () => {
 
       expect(JSON.parse(fetchMock.mock.calls[0]![1]?.body as string)).toEqual({ content: "hello" });
       expect(JSON.parse(fetchMock.mock.calls[1]![1]?.body as string)).toEqual({ content: "again" });
+    });
+  });
+
+  // CAR-794 — ETag / If-Match Lost-Update-Protection on the Excalidraw save.
+  describe("updateExcalidrawAttachment", () => {
+    const okAttachment = () =>
+      new Response(
+        JSON.stringify({
+          id: "att-1",
+          url: "https://cdn.example.test/att-1.excalidraw",
+          download_url: "https://cdn.example.test/att-1.excalidraw?sig=x",
+          filename: "att-1.excalidraw",
+          updated_at: "2026-05-20T17:30:00.123456Z",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+
+    it("sends the expectedUpdatedAt token as an If-Match header", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okAttachment());
+      vi.stubGlobal("fetch", fetchMock);
+
+      const client = new ApiClient("https://api.example.test");
+      await client.updateExcalidrawAttachment(
+        "att-1",
+        { elements: [] },
+        "2026-05-20T17:00:00.000000Z",
+      );
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(new Headers(init?.headers).get("If-Match")).toBe(
+        "2026-05-20T17:00:00.000000Z",
+      );
+    });
+
+    it("omits If-Match when no expectedUpdatedAt is supplied", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okAttachment());
+      vi.stubGlobal("fetch", fetchMock);
+
+      const client = new ApiClient("https://api.example.test");
+      await client.updateExcalidrawAttachment("att-1", { elements: [] });
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(new Headers(init?.headers).has("If-Match")).toBe(false);
+    });
+
+    it("maps a 412 Precondition Failed to AttachmentConflictError", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ error: "attachment was modified" }), {
+            status: 412,
+            statusText: "Precondition Failed",
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      );
+
+      const client = new ApiClient("https://api.example.test");
+      await expect(
+        client.updateExcalidrawAttachment(
+          "att-1",
+          { elements: [] },
+          "2026-05-20T17:00:00.000000Z",
+        ),
+      ).rejects.toBeInstanceOf(AttachmentConflictError);
     });
   });
 });

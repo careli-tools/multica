@@ -23,6 +23,7 @@ import {
 } from "@multica/core/excalidraw";
 import { issueKeys } from "@multica/core/issues/queries";
 import { api } from "@multica/core/api";
+import type { Attachment } from "@multica/core/types";
 import type { ExcalidrawSceneData } from "./excalidraw-editor";
 
 export type ExcalidrawDrawerMode =
@@ -82,10 +83,35 @@ export function useIssueExcalidraw(
   // POST would orphan the original create. Save calls queue behind the
   // in-flight promise instead of fanning out.
   const inFlightRef = useRef<Promise<unknown> | null>(null);
+  // CAR-794: the attachment's last-seen `updated_at`, sent as the optimistic-
+  // locking token on the next PUT so a concurrent save from another tab is
+  // rejected instead of silently clobbered. Held in a ref so the in-flight
+  // save closure reads the live value. Seeded from the issue's attachment
+  // list cache on edit-mode entry and refreshed from every save response;
+  // null means "no known version" → the PUT falls back to last-write-wins.
+  const knownUpdatedAtRef = useRef<string | null>(null);
 
   const editingAttachmentId =
     mode.kind === "edit" ? mode.attachmentId : null;
   const sceneQuery = useQuery(excalidrawSceneOptions(editingAttachmentId));
+
+  // Seed (or clear) the optimistic-locking token whenever the edit target
+  // changes. The issue's attachment list is almost always already cached —
+  // the preview the user clicked to open the editor renders from it — so the
+  // freshest known `updated_at` is read straight from the Query cache
+  // without an extra round-trip. A cache miss leaves the first save
+  // unguarded; subsequent saves use the token from the PUT response.
+  useEffect(() => {
+    if (!editingAttachmentId) {
+      knownUpdatedAtRef.current = null;
+      return;
+    }
+    const cached = queryClient.getQueryData<Attachment[]>(
+      issueKeys.attachments(issueId),
+    );
+    const match = cached?.find((a) => a.id === editingAttachmentId);
+    knownUpdatedAtRef.current = match?.updated_at || null;
+  }, [editingAttachmentId, issueId, queryClient]);
 
   const openNew = useCallback(() => {
     if (!canWrite) return;
@@ -143,7 +169,16 @@ export function useIssueExcalidraw(
           }
 
           if (targetIdAtSchedule) {
-            const att = await api.updateExcalidrawAttachment(targetIdAtSchedule, scene);
+            const att = await api.updateExcalidrawAttachment(
+              targetIdAtSchedule,
+              scene,
+              knownUpdatedAtRef.current ?? undefined,
+            );
+            // Adopt the server's new updated_at so the next save's If-Match
+            // reflects this write. On an AttachmentConflictError this line
+            // is never reached — the stale token is left in place and the
+            // rejection surfaces through onSaveError for the host to handle.
+            if (att.updated_at) knownUpdatedAtRef.current = att.updated_at;
             // Refresh both the scene cache (so a close-then-reopen sees
             // the latest bytes) and the issue's attachment list (size /
             // updated-at columns).
@@ -161,6 +196,9 @@ export function useIssueExcalidraw(
           const filename = defaultExcalidrawFilename(issueIdentifier ?? null);
           const att = await api.createExcalidrawAttachment(issueId, filename, scene);
           createdIdRef.current = att.id;
+          // Seed the lock token from the create response so the very next
+          // in-place save (same drawer session) already sends an If-Match.
+          knownUpdatedAtRef.current = att.updated_at || null;
           queryClient.setQueryData(
             excalidrawKeys.scene(att.id),
             scene,

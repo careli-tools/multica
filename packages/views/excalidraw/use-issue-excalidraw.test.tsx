@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { Attachment } from "@multica/core/types";
+import { issueKeys } from "@multica/core/issues/queries";
 
 const {
   createMock,
@@ -24,7 +25,10 @@ vi.mock("@multica/core/api", () => ({
 
 import { useIssueExcalidraw } from "./use-issue-excalidraw";
 
-function makeAttachment(id: string): Attachment {
+function makeAttachment(
+  id: string,
+  updatedAt = "2026-05-18T00:00:00.000Z",
+): Attachment {
   return {
     id,
     workspace_id: "ws-1",
@@ -40,6 +44,7 @@ function makeAttachment(id: string): Attachment {
     content_type: "application/vnd.excalidraw+json",
     size_bytes: 128,
     created_at: "2026-05-17T00:00:00Z",
+    updated_at: updatedAt,
   };
 }
 
@@ -146,7 +151,7 @@ describe("useIssueExcalidraw", () => {
       await Promise.resolve();
     });
     expect(createMock).toHaveBeenCalledTimes(1);
-    const [issueIdArg, filenameArg] = createMock.mock.calls[0];
+    const [issueIdArg, filenameArg] = createMock.mock.calls[0] ?? [];
     expect(issueIdArg).toBe("issue-1");
     expect(filenameArg).toMatch(/^MUL-713-.*\.excalidraw$/);
     expect(onCreated).toHaveBeenCalledWith("att-new");
@@ -158,7 +163,13 @@ describe("useIssueExcalidraw", () => {
     });
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(updateMock).toHaveBeenCalledTimes(1);
-    expect(updateMock).toHaveBeenCalledWith("att-new", expect.any(Object));
+    // The in-place save carries the optimistic-locking token seeded from
+    // the create response (CAR-794).
+    expect(updateMock).toHaveBeenCalledWith(
+      "att-new",
+      expect.any(Object),
+      "2026-05-18T00:00:00.000Z",
+    );
   });
 
   it("edit mode always PUTs against the provided attachment id", async () => {
@@ -175,7 +186,60 @@ describe("useIssueExcalidraw", () => {
       await Promise.resolve();
     });
     expect(createMock).not.toHaveBeenCalled();
-    expect(updateMock).toHaveBeenCalledWith("att-existing", expect.any(Object));
+    // No attachment list cached for this issue → the first save has no
+    // known version and falls back to an unguarded PUT (If-Match omitted).
+    expect(updateMock).toHaveBeenCalledWith(
+      "att-existing",
+      expect.any(Object),
+      undefined,
+    );
+  });
+
+  it("seeds the If-Match token from the cached attachment list", async () => {
+    updateMock.mockResolvedValue(
+      makeAttachment("att-cached", "2026-06-02T09:00:00.000Z"),
+    );
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    qc.setQueryData(issueKeys.attachments("issue-1"), [
+      makeAttachment("att-cached", "2026-06-01T12:00:00.000Z"),
+    ]);
+    const seededWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(
+      () => useIssueExcalidraw({ issueId: "issue-1", canWrite: true }),
+      { wrapper: seededWrapper },
+    );
+    act(() => result.current.openExisting("att-cached"));
+
+    await act(async () => {
+      result.current.handleChange(scene);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // First save uses the updated_at read from the cache; the second adopts
+    // the value returned by the preceding PUT.
+    expect(updateMock).toHaveBeenCalledWith(
+      "att-cached",
+      expect.any(Object),
+      "2026-06-01T12:00:00.000Z",
+    );
+
+    await act(async () => {
+      result.current.handleChange({ ...scene, elements: [{ id: "next" }] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenLastCalledWith(
+      "att-cached",
+      expect.any(Object),
+      "2026-06-02T09:00:00.000Z",
+    );
   });
 
   it("viewMode suppresses saves entirely", async () => {

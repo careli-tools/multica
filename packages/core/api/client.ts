@@ -244,6 +244,18 @@ export class PreviewUnsupportedError extends Error {
   }
 }
 
+// Thrown by updateExcalidrawAttachment when the server rejects an in-place
+// save because the attachment was modified by someone else since this client
+// last read it (HTTP 412 Precondition Failed / 409 Conflict, CAR-794).
+// Surfacing it as a typed error lets the editor show a "reload and retry"
+// affordance instead of a generic save-failed toast.
+export class AttachmentConflictError extends Error {
+  constructor() {
+    super("attachment was modified by someone else");
+    this.name = "AttachmentConflictError";
+  }
+}
+
 export class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
@@ -1443,6 +1455,12 @@ export class ApiClient {
   // Overwrites the bytes of an existing `.excalidraw` attachment in place.
   // The id stays stable across saves so the description editor's inline
   // preview never needs to rebind.
+  //
+  // `expectedUpdatedAt` is the attachment's last-seen `updated_at`. When
+  // provided it is sent as an If-Match header so the server can reject the
+  // write if another tab saved in the meantime (CAR-794) — a stale write
+  // surfaces as AttachmentConflictError. Omit it (older callers, or a
+  // first save with no known version) for legacy last-write-wins behaviour.
   async updateExcalidrawAttachment(
     id: string,
     scene: {
@@ -1450,12 +1468,28 @@ export class ApiClient {
       appState?: Record<string, unknown>;
       files?: Record<string, unknown>;
     },
+    expectedUpdatedAt?: string,
   ): Promise<Attachment> {
-    const raw = await this.fetch<unknown>(`/api/attachments/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/vnd.excalidraw+json" },
-      body: JSON.stringify(scene),
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": "application/vnd.excalidraw+json",
+    };
+    if (expectedUpdatedAt) headers["If-Match"] = expectedUpdatedAt;
+
+    let raw: unknown;
+    try {
+      raw = await this.fetch<unknown>(`/api/attachments/${id}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(scene),
+      });
+    } catch (err) {
+      // 412 Precondition Failed (and 409 Conflict, kept for forward
+      // compatibility) mean the optimistic-lock check lost the race.
+      if (err instanceof ApiError && (err.status === 412 || err.status === 409)) {
+        throw new AttachmentConflictError();
+      }
+      throw err;
+    }
     return parseWithFallback(raw, AttachmentResponseSchema, EMPTY_ATTACHMENT, {
       endpoint: "PUT /api/attachments/{id}",
     });

@@ -85,6 +85,7 @@ export const EMPTY_ATTACHMENT: Attachment = {
   content_type: "",
   size_bytes: 0,
   created_at: "",
+  updated_at: "",
 };
 
 // All object schemas use `.loose()` so unknown server-side fields pass
