@@ -746,6 +746,31 @@ func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request
 	// Metadata UPDATE won the optimistic-lock check — commit the bytes.
 	if _, err := h.Storage.Replace(r.Context(), key, body, excalidrawContentType, att.Filename); err != nil {
 		slog.Error("attachment replace failed after metadata update", "id", attachmentID, "key", key, "error", err)
+
+		// Roll back size_bytes, content_type and updated_at to their
+		// pre-UPDATE snapshot so the DB row does not silently diverge
+		// from the blob storage (CAR-797).
+		rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, rbErr := h.Queries.RestoreAttachmentContent(rbCtx, db.RestoreAttachmentContentParams{
+			ID:          att.ID,
+			WorkspaceID: att.WorkspaceID,
+			SizeBytes:   att.SizeBytes,
+			ContentType: att.ContentType,
+			UpdatedAt:   att.UpdatedAt,
+			UpdatedAt_2: updated.UpdatedAt,
+		}); rbErr != nil {
+			if errors.Is(rbErr, pgx.ErrNoRows) {
+				// Concurrent write already touched the row — divergence
+				// resolved naturally. This is a normal race, not an error.
+				slog.Warn("rollback skipped: row already touched by concurrent write", "id", attachmentID)
+			} else {
+				slog.Error("metadata rollback after storage failure also failed", "id", attachmentID, "error", rbErr)
+			}
+		} else {
+			slog.Warn("rolled back metadata after storage failure", "id", attachmentID)
+		}
+
 		writeError(w, http.StatusInternalServerError, "failed to save attachment")
 		return
 	}
