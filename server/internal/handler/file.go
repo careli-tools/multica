@@ -758,7 +758,7 @@ func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request
 			SizeBytes:   att.SizeBytes,
 			ContentType: att.ContentType,
 			UpdatedAt:   att.UpdatedAt,
-				UpdatedAt_2: updated.UpdatedAt,
+			UpdatedAt_2: updated.UpdatedAt,
 		}); rbErr != nil {
 			if errors.Is(rbErr, pgx.ErrNoRows) {
 				// Concurrent write already touched the row — divergence

@@ -651,7 +651,6 @@ func TestUpdateAttachmentContent_StorageWriteRollback(t *testing.T) {
 	}
 }
 
-
 // TestUpdateAttachmentContent_ConcurrentWriteRollbackGuard verifies that
 // RestoreAttachmentContent's optimistic-lock guard prevents the rollback
 // from overwriting a concurrent write. When updated_at has been advanced
