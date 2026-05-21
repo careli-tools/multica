@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -12,8 +13,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // createHandlerTestChatSession seeds a chat_session row owned by testUserID
@@ -591,30 +596,6 @@ func (f *failingStorage) Replace(ctx context.Context, key string, data []byte, c
 	return "", f.replaceErr
 }
 
-func (f *failingStorage) Upload(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
-	return f.mockStorage.Upload(ctx, key, data, contentType, filename)
-}
-
-func (f *failingStorage) Delete(ctx context.Context, key string) {
-	f.mockStorage.Delete(ctx, key)
-}
-
-func (f *failingStorage) DeleteKeys(ctx context.Context, keys []string) {
-	f.mockStorage.DeleteKeys(ctx, keys)
-}
-
-func (f *failingStorage) KeyFromURL(rawURL string) string {
-	return f.mockStorage.KeyFromURL(rawURL)
-}
-
-func (f *failingStorage) CdnDomain() string {
-	return f.mockStorage.CdnDomain()
-}
-
-func (f *failingStorage) GetReader(ctx context.Context, key string) (io.ReadCloser, error) {
-	return f.mockStorage.GetReader(ctx, key)
-}
-
 // TestUpdateAttachmentContent_StorageWriteRollback verifies the CAR-797
 // partial-failure fix: when Storage.Replace fails after a successful
 // metadata UPDATE, the handler must roll back size_bytes, content_type
@@ -667,5 +648,100 @@ func TestUpdateAttachmentContent_StorageWriteRollback(t *testing.T) {
 	}
 	if rbUpdatedAt != origUpdatedAt {
 		t.Errorf("updated_at = %q, want %q (original)", rbUpdatedAt, origUpdatedAt)
+	}
+}
+
+
+// TestUpdateAttachmentContent_ConcurrentWriteRollbackGuard verifies that
+// RestoreAttachmentContent's optimistic-lock guard prevents the rollback
+// from overwriting a concurrent write. When updated_at has been advanced
+// after the metadata UPDATE, the rollback matches zero rows and the row
+// retains the concurrent-write values.
+func TestUpdateAttachmentContent_ConcurrentWriteRollbackGuard(t *testing.T) {
+	store := &mockStorage{}
+	origStorage := testHandler.Storage
+	testHandler.Storage = store
+	defer func() { testHandler.Storage = origStorage }()
+
+	id := seedPreviewAttachment(t, store, "scene-cw-key.excalidraw", "diagram.excalidraw", excalidrawContentType, []byte(`{"elements":[]}`))
+
+	// Snapshot the original attachment row.
+	var origSize int64
+	var origContentType string
+	var origUpdatedAt time.Time
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT size_bytes, content_type, updated_at FROM attachment WHERE id = $1 AND workspace_id = $2`,
+		id, testWorkspaceID,
+	).Scan(&origSize, &origContentType, &origUpdatedAt); err != nil {
+		t.Fatalf("snapshot original row: %v", err)
+	}
+
+	// Simulate the metadata UPDATE that the handler performs before
+	// the storage write. This bumps updated_at.
+	var updatedSize int64
+	var updatedContentType string
+	var updatedUpdatedAt time.Time
+	if err := testPool.QueryRow(context.Background(),
+		`UPDATE attachment SET size_bytes = 99, content_type = $1, updated_at = now()
+		 WHERE id = $2 AND workspace_id = $3
+		 RETURNING size_bytes, content_type, updated_at`,
+		excalidrawContentType, id, testWorkspaceID,
+	).Scan(&updatedSize, &updatedContentType, &updatedUpdatedAt); err != nil {
+		t.Fatalf("metadata UPDATE: %v", err)
+	}
+
+	// Simulate a concurrent write that advances updated_at after
+	// the metadata UPDATE. This changes the values so we can
+	// distinguish them from the original snapshot.
+	const cwSize int64 = 777
+	const cwContentType = "application/vnd.concurrent-write"
+	var cwUpdatedAt time.Time
+	if err := testPool.QueryRow(context.Background(),
+		`UPDATE attachment SET size_bytes = $1, content_type = $2, updated_at = now()
+		 WHERE id = $3 AND workspace_id = $4
+		 RETURNING updated_at`,
+		cwSize, cwContentType, id, testWorkspaceID,
+	).Scan(&cwUpdatedAt); err != nil {
+		t.Fatalf("concurrent write UPDATE: %v", err)
+	}
+
+	// Attempt the rollback with the guard set to the
+	// post-metadata-UPDATE timestamp. The concurrent write has
+	// already advanced updated_at past that point, so the guard
+	// should cause zero rows to match → pgx.ErrNoRows.
+	_, rbErr := testHandler.Queries.RestoreAttachmentContent(context.Background(),
+		db.RestoreAttachmentContentParams{
+			ID:          parseUUID(id),
+			WorkspaceID: parseUUID(testWorkspaceID),
+			SizeBytes:   origSize,
+			ContentType: origContentType,
+			UpdatedAt:   pgtype.Timestamptz{Time: origUpdatedAt, Valid: true},
+			UpdatedAt_2: pgtype.Timestamptz{Time: updatedUpdatedAt, Valid: true},
+		})
+	if !errors.Is(rbErr, pgx.ErrNoRows) {
+		t.Fatalf("RestoreAttachmentContent with stale guard: want pgx.ErrNoRows, got %v", rbErr)
+	}
+
+	// The row must still carry the concurrent-write values, not
+	// the snapshot the failed rollback tried to restore.
+	var rowSize int64
+	var rowContentType string
+	var rowUpdatedAt time.Time
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT size_bytes, content_type, updated_at FROM attachment WHERE id = $1 AND workspace_id = $2`,
+		id, testWorkspaceID,
+	).Scan(&rowSize, &rowContentType, &rowUpdatedAt); err != nil {
+		t.Fatalf("read row after guard rejection: %v", err)
+	}
+	if rowSize != cwSize {
+		t.Errorf("size_bytes = %d, want %d (concurrent-write value preserved)", rowSize, cwSize)
+	}
+	if rowContentType != cwContentType {
+		t.Errorf("content_type = %q, want %q (concurrent-write value preserved)", rowContentType, cwContentType)
+	}
+	// updated_at must be the concurrent write's timestamp, not the
+	// metadata-UPDATE timestamp the rollback tried to rewind to.
+	if !rowUpdatedAt.Equal(cwUpdatedAt) {
+		t.Errorf("updated_at = %v, want %v (concurrent-write value preserved)", rowUpdatedAt, cwUpdatedAt)
 	}
 }

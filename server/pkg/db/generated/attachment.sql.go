@@ -458,7 +458,7 @@ func (q *Queries) ListAttachmentsByIssue(ctx context.Context, arg ListAttachment
 const restoreAttachmentContent = `-- name: RestoreAttachmentContent :one
 UPDATE attachment
 SET size_bytes = $3, content_type = $4, updated_at = $5
-WHERE id = $1 AND workspace_id = $2
+WHERE id = $1 AND workspace_id = $2 AND updated_at = $6
 RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, updated_at
 `
 
@@ -468,12 +468,15 @@ type RestoreAttachmentContentParams struct {
 	SizeBytes   int64              `json:"size_bytes"`
 	ContentType string             `json:"content_type"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	UpdatedAt_2 pgtype.Timestamptz `json:"updated_at_2"`
 }
 
 // Rollback helper for CAR-797: rewinds size_bytes, content_type and
 // updated_at to the snapshot taken before the failed Storage write.
-// Fails with pgx.ErrNoRows when a concurrent write has already touched
-// the row (the divergence has been naturally resolved).
+// The guard (updated_at = $6) makes this an optimistic-lock write: if a
+// concurrent save has already touched the row after our metadata UPDATE,
+// zero rows match and the caller gets pgx.ErrNoRows — divergence resolved
+// naturally, the rollback is a no-op.
 func (q *Queries) RestoreAttachmentContent(ctx context.Context, arg RestoreAttachmentContentParams) (Attachment, error) {
 	row := q.db.QueryRow(ctx, restoreAttachmentContent,
 		arg.ID,
@@ -481,6 +484,7 @@ func (q *Queries) RestoreAttachmentContent(ctx context.Context, arg RestoreAttac
 		arg.SizeBytes,
 		arg.ContentType,
 		arg.UpdatedAt,
+		arg.UpdatedAt_2,
 	)
 	var i Attachment
 	err := row.Scan(

@@ -93,9 +93,11 @@ DELETE FROM attachment WHERE id = $1 AND workspace_id = $2;
 -- name: RestoreAttachmentContent :one
 -- Rollback helper for CAR-797: rewinds size_bytes, content_type and
 -- updated_at to the snapshot taken before the failed Storage write.
--- Fails with pgx.ErrNoRows when a concurrent write has already touched
--- the row (the divergence has been naturally resolved).
+-- The guard (updated_at = $6) makes this an optimistic-lock write: if a
+-- concurrent save has already touched the row after our metadata UPDATE,
+-- zero rows match and the caller gets pgx.ErrNoRows — divergence resolved
+-- naturally, the rollback is a no-op.
 UPDATE attachment
 SET size_bytes = $3, content_type = $4, updated_at = $5
-WHERE id = $1 AND workspace_id = $2
+WHERE id = $1 AND workspace_id = $2 AND updated_at = $6
 RETURNING *;
