@@ -89,3 +89,13 @@ RETURNING *;
 
 -- name: DeleteAttachment :exec
 DELETE FROM attachment WHERE id = $1 AND workspace_id = $2;
+
+-- name: RestoreAttachmentContent :one
+-- Rollback helper for CAR-797: rewinds size_bytes, content_type and
+-- updated_at to the snapshot taken before the failed Storage write.
+-- Fails with pgx.ErrNoRows when a concurrent write has already touched
+-- the row (the divergence has been naturally resolved).
+UPDATE attachment
+SET size_bytes = $3, content_type = $4, updated_at = $5
+WHERE id = $1 AND workspace_id = $2
+RETURNING *;

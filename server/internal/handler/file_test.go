@@ -578,3 +578,94 @@ func TestUpdateAttachmentContent_LostUpdateGuard(t *testing.T) {
 		t.Fatalf("malformed If-Match PUT: status = %d, want 400; body=%s", w.Code, w.Body.String())
 	}
 }
+
+// failingStorage wraps a real *mockStorage but lets the caller override
+// Replace to return an arbitrary error while keeping all other methods
+// delegated.
+type failingStorage struct {
+	*mockStorage
+	replaceErr error
+}
+
+func (f *failingStorage) Replace(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
+	return "", f.replaceErr
+}
+
+func (f *failingStorage) Upload(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
+	return f.mockStorage.Upload(ctx, key, data, contentType, filename)
+}
+
+func (f *failingStorage) Delete(ctx context.Context, key string) {
+	f.mockStorage.Delete(ctx, key)
+}
+
+func (f *failingStorage) DeleteKeys(ctx context.Context, keys []string) {
+	f.mockStorage.DeleteKeys(ctx, keys)
+}
+
+func (f *failingStorage) KeyFromURL(rawURL string) string {
+	return f.mockStorage.KeyFromURL(rawURL)
+}
+
+func (f *failingStorage) CdnDomain() string {
+	return f.mockStorage.CdnDomain()
+}
+
+func (f *failingStorage) GetReader(ctx context.Context, key string) (io.ReadCloser, error) {
+	return f.mockStorage.GetReader(ctx, key)
+}
+
+// TestUpdateAttachmentContent_StorageWriteRollback verifies the CAR-797
+// partial-failure fix: when Storage.Replace fails after a successful
+// metadata UPDATE, the handler must roll back size_bytes, content_type
+// and updated_at to the pre-UPDATE snapshot so the DB row does not
+// silently diverge from the blob storage.
+func TestUpdateAttachmentContent_StorageWriteRollback(t *testing.T) {
+	base := &mockStorage{}
+	store := &failingStorage{mockStorage: base, replaceErr: fmt.Errorf("S3 write failure")}
+	origStorage := testHandler.Storage
+	testHandler.Storage = store
+	defer func() { testHandler.Storage = origStorage }()
+
+	originalBody := []byte(`{"elements":[]}`)
+	id := seedPreviewAttachment(t, base, "scene-rb-key.excalidraw", "diagram.excalidraw", excalidrawContentType, originalBody)
+
+	// Snapshot the original attachment row before the PUT.
+	var origSize int64
+	var origContentType string
+	var origUpdatedAt string
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT size_bytes, content_type, updated_at::text FROM attachment WHERE id = $1 AND workspace_id = $2`,
+		id, testWorkspaceID,
+	).Scan(&origSize, &origContentType, &origUpdatedAt); err != nil {
+		t.Fatalf("snapshot original row: %v", err)
+	}
+
+	// PUT without If-Match — the metadata UPDATE succeeds but Storage.Replace
+	// fails. The handler must roll back and return 500.
+	req, w := newUpdateContentRequest(t, id, testWorkspaceID, "", []byte(`{"elements":[99]}`))
+	testHandler.UpdateAttachmentContent(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+
+	// The rollback must have restored the original values.
+	var rbSize int64
+	var rbContentType string
+	var rbUpdatedAt string
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT size_bytes, content_type, updated_at::text FROM attachment WHERE id = $1 AND workspace_id = $2`,
+		id, testWorkspaceID,
+	).Scan(&rbSize, &rbContentType, &rbUpdatedAt); err != nil {
+		t.Fatalf("read row after rollback: %v", err)
+	}
+	if rbSize != origSize {
+		t.Errorf("size_bytes = %d, want %d (original)", rbSize, origSize)
+	}
+	if rbContentType != origContentType {
+		t.Errorf("content_type = %q, want %q (original)", rbContentType, origContentType)
+	}
+	if rbUpdatedAt != origUpdatedAt {
+		t.Errorf("updated_at = %q, want %q (original)", rbUpdatedAt, origUpdatedAt)
+	}
+}
