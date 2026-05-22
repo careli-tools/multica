@@ -92,6 +92,11 @@ export default function ExcalidrawEditor({
             typeof Excalidraw
           >["onChange"]
         }
+        // Die `collab`-Prop existiert in v0.18.x nicht und UIOptions hat keine
+        // collab-Bezogene Einstellung. renderTopRightUI wird explizit auf null
+        // gesetzt, damit kein LiveCollaborationTrigger (auch nicht in zukuenftigen
+        // Minor-Releases) im Single-User-Inline-Editor erscheint.
+        renderTopRightUI={() => null}
         UIOptions={{
           canvasActions: {
             saveAsImage: false,
