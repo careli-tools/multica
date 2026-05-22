@@ -30,6 +30,16 @@ var extContentTypes = map[string]string{
 	".excalidraw": "application/vnd.excalidraw+json",
 }
 
+// isExcalidrawFilename returns true when the filename indicates an Excalidraw
+// scene file. path.Ext only returns the last segment (.json for
+// "diagram.excalidraw.json"), so we also compare the full suffix so both
+// ".excalidraw" and ".excalidraw.json" are recognised regardless of how the
+// official editor or a browser re-save names the file.
+func isExcalidrawFilename(filename string) bool {
+	lower := strings.ToLower(filename)
+	return strings.HasSuffix(lower, ".excalidraw") || strings.HasSuffix(lower, ".excalidraw.json")
+}
+
 const maxUploadSize = 100 << 20 // 100 MB
 
 // maxExcalidrawSceneSize caps the body PUT /api/attachments/{id} will accept
@@ -199,6 +209,12 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	// Override with extension-based type when the sniffer gets it wrong.
 	if ct, ok := extContentTypes[strings.ToLower(path.Ext(header.Filename))]; ok {
 		contentType = ct
+	}
+	// path.Ext returns ".json" for "diagram.excalidraw.json", so the
+	// extension-based override above misses the double extension. Force
+	// the correct MIME for any Excalidraw filename pattern.
+	if isExcalidrawFilename(header.Filename) {
+		contentType = excalidrawContentType
 	}
 	// Seek back so the full file is uploaded.
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
@@ -659,9 +675,12 @@ func (h *Handler) UpdateAttachmentContent(w http.ResponseWriter, r *http.Request
 	}
 
 	// Type guard: refuse to overwrite anything other than an Excalidraw
-	// scene. Without this, a misbehaving (or hostile) client could PUT a
-	// JSON blob over a PDF / image and silently corrupt unrelated data.
-	if att.ContentType != excalidrawContentType {
+	// scene. Check both the stored content-type AND the filename suffix
+	// so attachments uploaded before the extContentTypes fix (or saved by
+	// the official editor with a .excalidraw.json extension) are still
+	// editable. Without this, a misbehaving (or hostile) client could PUT
+	// a JSON blob over a PDF / image and silently corrupt unrelated data.
+	if att.ContentType != excalidrawContentType && !isExcalidrawFilename(att.Filename) {
 		writeError(w, http.StatusUnsupportedMediaType, "in-place edit only supported for Excalidraw attachments")
 		return
 	}
