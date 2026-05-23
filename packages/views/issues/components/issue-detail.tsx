@@ -1106,7 +1106,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     },
   });
 
-  // Excalidraw collaboration (CAR-826). When the server advertises an
+// Excalidraw collaboration (CAR-826). When the server advertises an
   // excalidraw-room URL, derive a room identifier from the current editing
   // context so the editor can enable live collaboration.
   const excalidrawRoomUrl = useConfigStore((s) => s.excalidrawRoomUrl);
@@ -1116,6 +1116,21 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         ? `attachment:${excalidraw.mode.attachmentId}`
         : `issue:${id}`
       : undefined;
+
+  // Toast on scene load failure (in addition to the inline error state
+  // inside the drawer) so the user gets feedback even if they step away.
+  // Track which error we've already toasted via a ref so re-renders don't
+  // fire duplicate toasts (the error object identity or message may persist
+  // across unrelated re-renders).
+  const toastedErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (excalidraw.error && toastedErrorRef.current !== excalidraw.error.message) {
+      toast.error(t(($) => $.detail.excalidraw_load_failed), {
+        description: excalidraw.error.message,
+      });
+      toastedErrorRef.current = excalidraw.error.message;
+    }
+  }, [excalidraw.error, t]);
 
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
@@ -1742,8 +1757,10 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                   : false
               }
               onChange={excalidraw.handleChange}
-              roomUrl={excalidrawRoomUrl || undefined}
+roomUrl={excalidrawRoomUrl || undefined}
               roomId={collaborationRoomId}
+              error={excalidraw.error}
+              onRetry={excalidraw.retry}
             />
           </div>
           {excalidrawAttachments.length > 0 && (

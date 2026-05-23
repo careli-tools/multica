@@ -55,9 +55,17 @@ export interface UseIssueExcalidraw {
   openNew: () => void;
   openExisting: (attachmentId: string, opts?: { viewMode?: boolean }) => void;
   close: () => void;
-  /** initialData passed straight to the editor; undefined while loading. */
+  /** initialData passed straight to the editor; undefined while loading,
+   *  null when an error occurred (so the drawer can show an error UI
+   *  instead of an empty canvas). */
   initialData: ExcalidrawSceneData | null | undefined;
   isLoading: boolean;
+  /** Non-null when the scene query failed. Consumers render an inline error
+   *  state rather than a blank canvas. */
+  error: Error | null;
+  /** Refetches the scene query so the host can offer a "retry"
+   *  affordance. */
+  retry: () => void;
   /** Wired into ExcalidrawDrawer.onChange. */
   handleChange: (scene: ExcalidrawSceneData) => void;
   /** True if a save is currently in flight. Surfaced for tests / "saving…"
@@ -73,6 +81,25 @@ export function useIssueExcalidraw(
   const [mode, setMode] = useState<ExcalidrawDrawerMode>({ kind: "closed" });
   const [isSaving, setIsSaving] = useState(false);
 
+  const editingAttachmentId =
+    mode.kind === "edit" ? mode.attachmentId : null;
+  const sceneQuery = useQuery(excalidrawSceneOptions(editingAttachmentId));
+
+  const retry = useCallback(() => {
+    if (editingAttachmentId) {
+      queryClient.refetchQueries({
+        queryKey: excalidrawKeys.scene(editingAttachmentId),
+      });
+    }
+  }, [editingAttachmentId, queryClient]);
+
+  const sceneError: Error | null =
+    sceneQuery.error instanceof Error
+      ? sceneQuery.error
+      : sceneQuery.error
+        ? new Error("Failed to load diagram")
+        : null;
+
   // Once we create an attachment in "new" mode, subsequent saves must
   // overwrite that same id (not POST again). The id is held in a ref so
   // the in-flight save callback closes over the live value without
@@ -82,10 +109,6 @@ export function useIssueExcalidraw(
   // POST would orphan the original create. Save calls queue behind the
   // in-flight promise instead of fanning out.
   const inFlightRef = useRef<Promise<unknown> | null>(null);
-
-  const editingAttachmentId =
-    mode.kind === "edit" ? mode.attachmentId : null;
-  const sceneQuery = useQuery(excalidrawSceneOptions(editingAttachmentId));
 
   const openNew = useCallback(() => {
     if (!canWrite) return;
@@ -213,6 +236,8 @@ export function useIssueExcalidraw(
     close,
     // The scene cache also carries the ETag (CAR-794); strip it back down
     // to the scene shape the editor's initialData expects.
+    // When sceneQuery has an error we return null so the drawer renders an
+    // inline error state rather than a blank canvas.
     initialData: mode.kind === "edit"
       ? sceneQuery.data
         ? {
@@ -220,13 +245,17 @@ export function useIssueExcalidraw(
             appState: sceneQuery.data.appState,
             files: sceneQuery.data.files,
           }
-        : sceneQuery.isLoading
-          ? undefined
-          : { elements: [], appState: {}, files: {} }
+        : sceneQuery.error
+          ? null
+          : sceneQuery.isLoading
+            ? undefined
+            : { elements: [], appState: {}, files: {} }
       : mode.kind === "new"
         ? { elements: [], appState: {}, files: {} }
         : undefined,
     isLoading: mode.kind === "edit" && sceneQuery.isLoading,
+    error: sceneError,
+    retry,
     handleChange,
     isSaving,
   };

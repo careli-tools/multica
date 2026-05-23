@@ -129,6 +129,7 @@
     "excalidraw_drawer_title": "Diagram",
     "excalidraw_drawer_description": "Excalidraw diagram editor",
     "excalidraw_save_failed": "Could not save diagram. Your changes are still on screen — please retry.",
+    "excalidraw_load_failed": "Could not load diagram. The server may be unavailable — please retry.",
     "section_properties": "Properties",
     "section_parent_issue": "Parent issue",
     "section_pull_requests": "Pull requests",

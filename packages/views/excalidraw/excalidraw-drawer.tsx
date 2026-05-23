@@ -7,8 +7,9 @@
 // framework-specific SSR opt-outs (`next/dynamic`'s `ssr: false`) belong in
 // the app shell, not in this shared package.
 import { Suspense, lazy, useCallback } from "react";
-import { X } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
+import { Button } from "@multica/ui/components/ui/button";
 import { DrawerSkeleton } from "./drawer-skeleton";
 import type {
   ExcalidrawEditorProps,
@@ -23,6 +24,12 @@ export interface ExcalidrawDrawerProps extends ExcalidrawEditorProps {
   title?: string;
   description?: string;
   className?: string;
+  /** When non-null the drawer renders an inline error state instead of the
+   *  editor. The editor bundle is never loaded in this state. */
+  error?: Error | null;
+  /** Called when the user clicks the "retry" button inside the error state.
+   *  Typically refetches the scene query so the load is re-attempted. */
+  onRetry?: () => void;
 }
 
 export function ExcalidrawDrawer({
@@ -31,6 +38,8 @@ export function ExcalidrawDrawer({
   title,
   description,
   className,
+  error,
+  onRetry,
   ...editorProps
 }: ExcalidrawDrawerProps) {
   const handleClose = useCallback(() => onOpenChange(false), [onOpenChange]);
@@ -67,9 +76,28 @@ export function ExcalidrawDrawer({
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        <Suspense fallback={<DrawerSkeleton />}>
-          <LazyExcalidrawEditor {...editorProps} />
-        </Suspense>
+        {error ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+            <AlertTriangle className="size-10 text-destructive" />
+            <div>
+              <h3 className="text-sm font-semibold">
+                Failed to load diagram
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {error.message}
+              </p>
+            </div>
+            {onRetry && (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Suspense fallback={<DrawerSkeleton />}>
+            <LazyExcalidrawEditor {...editorProps} />
+          </Suspense>
+        )}
       </div>
     </div>
   );
