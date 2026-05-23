@@ -1109,11 +1109,16 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
   // Toast on scene load failure (in addition to the inline error state
   // inside the drawer) so the user gets feedback even if they step away.
+  // Track which error we've already toasted via a ref so re-renders don't
+  // fire duplicate toasts (the error object identity or message may persist
+  // across unrelated re-renders).
+  const toastedErrorRef = useRef<string | null>(null);
   useEffect(() => {
-    if (excalidraw.error) {
+    if (excalidraw.error && toastedErrorRef.current !== excalidraw.error.message) {
       toast.error(t(($) => $.detail.excalidraw_load_failed), {
         description: excalidraw.error.message,
       });
+      toastedErrorRef.current = excalidraw.error.message;
     }
   }, [excalidraw.error, t]);
 
