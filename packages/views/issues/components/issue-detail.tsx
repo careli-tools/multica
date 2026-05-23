@@ -64,6 +64,7 @@ import { ExecutionLogSection } from "./execution-log-section";
 import { PullRequestList } from "./pull-request-list";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
+import { useConfigStore } from "@multica/core/config";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -1093,8 +1094,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   const handleUpdateField = actions.updateField;
 
   // Excalidraw editor (CAR-713). Write access tracks workspace membership —
-  // viewers (anyone without a role) only get the read-only path via a
-  // preview click. Toolbar entry-point disappears for them entirely.
   const canEditIssue = currentUserRole !== null;
   const excalidraw = useIssueExcalidraw({
     issueId: id,
@@ -1107,7 +1106,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     },
   });
 
-  // Toast on scene load failure (in addition to the inline error state
+// Toast on scene load failure (in addition to the inline error state
   // inside the drawer) so the user gets feedback even if they step away.
   // Track which error we've already toasted via a ref so re-renders don't
   // fire duplicate toasts (the error object identity or message may persist
@@ -1121,6 +1120,17 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       toastedErrorRef.current = excalidraw.error.message;
     }
   }, [excalidraw.error, t]);
+
+  // Excalidraw collaboration (CAR-826). When the server advertises an
+  // excalidraw-room URL, derive a room identifier from the current editing
+  // context so the editor can enable live collaboration.
+  const excalidrawRoomUrl = useConfigStore((s) => s.excalidrawRoomUrl);
+  const collaborationRoomId =
+    excalidrawRoomUrl && excalidraw.mode.kind !== "closed"
+      ? excalidraw.mode.kind === "edit"
+        ? `attachment:${excalidraw.mode.attachmentId}`
+        : `issue:${id}`
+      : undefined;
 
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
@@ -1749,6 +1759,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               onChange={excalidraw.handleChange}
               error={excalidraw.error}
               onRetry={excalidraw.retry}
+              roomUrl={excalidrawRoomUrl || undefined}
+              roomId={collaborationRoomId}
             />
           </div>
           {excalidrawAttachments.length > 0 && (
