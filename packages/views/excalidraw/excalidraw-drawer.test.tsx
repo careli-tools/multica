@@ -144,4 +144,49 @@ describe("ExcalidrawDrawer", () => {
     await userEvent.click(closeButton);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("renders an inline error state instead of the editor when error is provided", async () => {
+    render(
+      <ExcalidrawDrawer
+        open
+        onOpenChange={() => {}}
+        error={new Error("401 Unauthorized")}
+      />,
+    );
+
+    // The editor should never mount when error is present.
+    expect(screen.queryByTestId("mock-excalidraw")).toBeNull();
+
+    // The error message should be visible.
+    expect(screen.getByText("401 Unauthorized")).toBeInTheDocument();
+    expect(screen.getByText("Failed to load diagram")).toBeInTheDocument();
+  });
+
+  it("renders a retry button that calls onRetry when clicked", async () => {
+    const onRetry = vi.fn();
+    render(
+      <ExcalidrawDrawer
+        open
+        onOpenChange={() => {}}
+        error={new Error("offline")}
+        onRetry={onRetry}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+    await userEvent.click(retryButton);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show a retry button when onRetry is omitted", () => {
+    render(
+      <ExcalidrawDrawer
+        open
+        onOpenChange={() => {}}
+        error={new Error("offline")}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
 });

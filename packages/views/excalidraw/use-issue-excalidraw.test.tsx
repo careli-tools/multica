@@ -291,4 +291,53 @@ describe("useIssueExcalidraw", () => {
     expect(createMock).toHaveBeenCalledTimes(2);
     expect(updateMock).not.toHaveBeenCalled();
   });
+
+  it("propagates scene query errors through the error field", async () => {
+    const queryErr = new Error("Forbidden");
+    getSceneMock.mockRejectedValue(queryErr);
+
+    const { result } = renderHook(
+      () => useIssueExcalidraw({ issueId: "issue-1", canWrite: true }),
+      { wrapper },
+    );
+    act(() => result.current.openExisting("att-err"));
+
+    // Wait for the query to fail and settle.
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.error?.message).toBe("Forbidden");
+    // initialData should be null on error (not an empty canvas).
+    expect(result.current.initialData).toBeNull();
+  });
+
+  it("retry triggers a re-fetch and clears the error on success", async () => {
+    getSceneMock
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({
+        elements: [{ id: "rect" }],
+        appState: {},
+        files: {},
+      });
+
+    const { result } = renderHook(
+      () => useIssueExcalidraw({ issueId: "issue-1", canWrite: true }),
+      { wrapper },
+    );
+    act(() => result.current.openExisting("att-retry"));
+
+    // Wait for the first (failing) query to settle.
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).not.toBeNull();
+
+    // Invoke retry — the query refetches and resolves successfully.
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.error).toBeNull());
+
+    expect(result.current.initialData).toEqual({
+      elements: [{ id: "rect" }],
+      appState: {},
+      files: {},
+    });
+  });
 });
