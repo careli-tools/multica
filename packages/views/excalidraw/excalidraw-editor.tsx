@@ -27,6 +27,13 @@ export interface ExcalidrawEditorProps {
   onChange?: (data: ExcalidrawSceneData) => void;
   viewModeEnabled?: boolean;
   debounceMs?: number;
+  /** URL of the excalidraw-room sidecar (e.g. "wss://draw.example.test/room").
+   *  When both `roomUrl` and `roomId` are set the editor enables live
+   *  collaboration via the `collaboration` prop on `<Excalidraw>`. */
+  roomUrl?: string;
+  /** Per-diagram room identifier — typically the attachment ID. Paired with
+   *  `roomUrl` to scope the collaboration session. */
+  roomId?: string;
 }
 
 export default function ExcalidrawEditor({
@@ -34,6 +41,8 @@ export default function ExcalidrawEditor({
   onChange,
   viewModeEnabled = false,
   debounceMs = 2000,
+  roomUrl,
+  roomId,
 }: ExcalidrawEditorProps) {
   const { resolvedTheme } = useTheme();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,6 +86,11 @@ export default function ExcalidrawEditor({
 
   const theme = resolvedTheme === "dark" ? "dark" : "light";
 
+  const collaboration =
+    roomUrl && roomId && !viewModeEnabled
+      ? ({ url: roomUrl, roomId } as Record<string, string>)
+      : undefined;
+
   return (
     <div data-slot="excalidraw-editor" className="h-full w-full">
       <Excalidraw
@@ -92,16 +106,18 @@ export default function ExcalidrawEditor({
             typeof Excalidraw
           >["onChange"]
         }
-        // Die `collab`-Prop existiert in v0.18.x nicht und UIOptions hat keine
-        // collab-Bezogene Einstellung. renderTopRightUI wird explizit auf null
-        // gesetzt, damit kein LiveCollaborationTrigger (auch nicht in zukuenftigen
-        // Minor-Releases) im Single-User-Inline-Editor erscheint.
-        renderTopRightUI={() => null}
+        // When collaboration is enabled we let Excalidraw render its own
+        // LiveCollaborationTrigger in the top-right UI. In single-user mode
+        // (no roomUrl/roomId) we suppress it to avoid visual noise.
+        renderTopRightUI={collaboration ? undefined : () => null}
         UIOptions={{
           canvasActions: {
             saveAsImage: false,
           },
         }}
+        {...(collaboration
+          ? ({ collaboration } as React.ComponentProps<typeof Excalidraw>)
+          : {})}
       />
     </div>
   );

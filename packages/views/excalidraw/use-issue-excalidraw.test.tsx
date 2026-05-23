@@ -264,6 +264,71 @@ describe("useIssueExcalidraw", () => {
     expect(onSaveError).toHaveBeenCalledWith(err);
   });
 
+  it("surfaces scene load errors as `error` in the return value", async () => {
+    const loadError = new Error("Failed to load excalidraw scene");
+    getSceneMock.mockRejectedValue(loadError);
+
+    const { result } = renderHook(
+      () =>
+        useIssueExcalidraw({
+          issueId: "issue-1",
+          canWrite: true,
+        }),
+      { wrapper },
+    );
+
+    act(() => result.current.openExisting("att-broken"));
+
+    // Wait for the query to settle in error state.
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error!.message).toBe(
+      "Failed to load excalidraw scene",
+    );
+  });
+
+  it("returns null error when the drawer is closed or in new mode", () => {
+    const { result } = renderHook(
+      () =>
+        useIssueExcalidraw({
+          issueId: "issue-1",
+          canWrite: true,
+        }),
+      { wrapper },
+    );
+
+    // Closed drawer — no error
+    expect(result.current.error).toBeNull();
+
+    act(() => result.current.openNew());
+    // New mode — no error
+    expect(result.current.error).toBeNull();
+  });
+
+  it("returns null error when scene data loads successfully", async () => {
+    getSceneMock.mockResolvedValue({
+      elements: [],
+      appState: {},
+      files: {},
+      etag: null,
+    });
+
+    const { result } = renderHook(
+      () =>
+        useIssueExcalidraw({
+          issueId: "issue-1",
+          canWrite: true,
+        }),
+      { wrapper },
+    );
+
+    act(() => result.current.openExisting("att-good"));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+  });
+
   it("closing resets create-id so the next 'new' diagram POSTs again", async () => {
     createMock
       .mockResolvedValueOnce(makeAttachment("first"))

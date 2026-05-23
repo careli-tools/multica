@@ -35,6 +35,7 @@ import {
   NewDiagramButton,
   OpenExcalidrawProvider,
   useIssueExcalidraw,
+  excalidrawRoomOptions,
 } from "../../excalidraw";
 import {
   Tooltip,
@@ -1107,6 +1108,18 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     },
   });
 
+  // Collaboration (CAR-826). Fetch the excalidraw-room sidecar URL from the
+  // app config. The room ID is derived from the attachment id (editing) or
+  // issue id (new diagram) so everyone editing the same diagram joins the
+  // same room. View-only users don't get collaboration.
+  const { data: appConfig } = useQuery(excalidrawRoomOptions());
+  const roomUrl = appConfig?.excalidraw_room_url ?? undefined;
+  const roomId = excalidraw.mode.kind === "edit"
+    ? excalidraw.mode.attachmentId
+    : excalidraw.mode.kind === "new"
+      ? id
+      : undefined;
+
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
   // shown for an issue that already has labels attached.
@@ -1732,6 +1745,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                   : false
               }
               onChange={excalidraw.handleChange}
+              error={excalidraw.error}
+              roomUrl={roomUrl}
+              roomId={roomId}
             />
           </div>
           {excalidrawAttachments.length > 0 && (

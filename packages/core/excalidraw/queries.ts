@@ -11,6 +11,7 @@ export const EXCALIDRAW_EXTENSION = ".excalidraw";
 export const excalidrawKeys = {
   scene: (attachmentId: string) =>
     ["excalidraw", "scene", attachmentId] as const,
+  config: () => ["excalidraw", "config"] as const,
 };
 
 export function excalidrawSceneOptions(attachmentId: string | null | undefined) {
@@ -32,6 +33,15 @@ export function isExcalidrawAttachment(attachment: Attachment | null | undefined
   if (!attachment) return false;
   if (attachment.content_type === EXCALIDRAW_MIME) return true;
   return attachment.filename.toLowerCase().endsWith(EXCALIDRAW_EXTENSION);
+}
+
+/** Fetch the app config to get the excalidraw-room sidecar URL. */
+export function excalidrawRoomOptions() {
+  return queryOptions({
+    queryKey: excalidrawKeys.config(),
+    queryFn: () => api.getConfig(),
+    staleTime: 5 * 60 * 1000, // 5 min — config rarely changes at runtime.
+  });
 }
 
 // Filename for a brand-new diagram. Includes issue identifier and a UTC

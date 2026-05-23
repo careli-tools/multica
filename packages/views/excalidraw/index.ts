@@ -6,6 +6,7 @@ export {
   type UseIssueExcalidraw,
   type UseIssueExcalidrawOptions,
 } from "./use-issue-excalidraw";
+export { excalidrawRoomOptions } from "@multica/core/excalidraw";
 export { NewDiagramButton } from "./new-diagram-button";
 export {
   OpenExcalidrawProvider,

@@ -1093,6 +1093,7 @@ export class ApiClient {
     posthog_key?: string;
     posthog_host?: string;
     analytics_environment?: string;
+    excalidraw_room_url?: string;
   }> {
     return this.fetch("/api/config");
   }

@@ -63,6 +63,10 @@ export interface UseIssueExcalidraw {
   /** True if a save is currently in flight. Surfaced for tests / "saving…"
    *  affordances; not currently rendered in the drawer chrome. */
   isSaving: boolean;
+  /** Error from the initial scene load (e.g. 401/403 on proxy). Null when
+   *  the load succeeded or no load was attempted. The host renders an inline
+   *  error in the drawer body instead of an empty canvas. */
+  error: Error | null;
 }
 
 export function useIssueExcalidraw(
@@ -229,5 +233,6 @@ export function useIssueExcalidraw(
     isLoading: mode.kind === "edit" && sceneQuery.isLoading,
     handleChange,
     isSaving,
+    error: mode.kind === "edit" ? (sceneQuery.error ?? null) : null,
   };
 }

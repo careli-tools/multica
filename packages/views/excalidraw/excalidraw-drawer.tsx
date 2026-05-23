@@ -7,7 +7,7 @@
 // framework-specific SSR opt-outs (`next/dynamic`'s `ssr: false`) belong in
 // the app shell, not in this shared package.
 import { Suspense, lazy, useCallback } from "react";
-import { X } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
 import { DrawerSkeleton } from "./drawer-skeleton";
 import type {
@@ -23,6 +23,9 @@ export interface ExcalidrawDrawerProps extends ExcalidrawEditorProps {
   title?: string;
   description?: string;
   className?: string;
+  /** When non-null the drawer renders an inline error banner instead of the
+   *  editor. Set by `useIssueExcalidraw.error` when the scene load fails. */
+  error?: Error | null;
 }
 
 export function ExcalidrawDrawer({
@@ -30,6 +33,7 @@ export function ExcalidrawDrawer({
   onOpenChange,
   title,
   description,
+  error,
   className,
   ...editorProps
 }: ExcalidrawDrawerProps) {
@@ -67,9 +71,27 @@ export function ExcalidrawDrawer({
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        <Suspense fallback={<DrawerSkeleton />}>
-          <LazyExcalidrawEditor {...editorProps} />
-        </Suspense>
+        {error ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+            <AlertTriangle className="size-8 text-destructive" />
+            <div>
+              <p className="text-sm font-medium text-destructive">
+                Failed to load diagram
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {error.message}
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Close the editor and try again. If the issue persists, check your
+              connection or try downloading the file directly.
+            </p>
+          </div>
+        ) : (
+          <Suspense fallback={<DrawerSkeleton />}>
+            <LazyExcalidrawEditor {...editorProps} />
+          </Suspense>
+        )}
       </div>
     </div>
   );

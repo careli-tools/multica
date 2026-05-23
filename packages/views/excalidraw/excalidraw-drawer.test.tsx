@@ -144,4 +144,36 @@ describe("ExcalidrawDrawer", () => {
     await userEvent.click(closeButton);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("renders an inline error instead of the editor when error is set", async () => {
+    render(
+      <ExcalidrawDrawer
+        open
+        onOpenChange={() => {}}
+        error={new Error("Failed to fetch scene (401)")}
+      />,
+    );
+
+    // The error banner should be visible immediately (no lazy-load needed).
+    expect(screen.getByText("Failed to load diagram")).toBeInTheDocument();
+    expect(
+      screen.getByText("Failed to fetch scene (401)"),
+    ).toBeInTheDocument();
+    // The mock editor should NOT be mounted.
+    expect(screen.queryByTestId("mock-excalidraw")).toBeNull();
+  });
+
+  it("renders the lazy editor when error is null/undefined", async () => {
+    render(
+      <ExcalidrawDrawer
+        open
+        onOpenChange={() => {}}
+        error={null}
+      />,
+    );
+
+    await flushLazy();
+
+    expect(await screen.findByTestId("mock-excalidraw")).toBeInTheDocument();
+  });
 });
