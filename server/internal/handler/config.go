@@ -23,6 +23,11 @@ type AppConfig struct {
 	PosthogKey           string `json:"posthog_key"`
 	PosthogHost          string `json:"posthog_host"`
 	AnalyticsEnvironment string `json:"analytics_environment"`
+
+	// Excalidraw collaboration room URL (e.g. wss://draw.careli.de).
+	// Returned at runtime so the frontend can enable live collaboration
+	// without rebuilding the bundle.
+	ExcalidrawRoomURL string `json:"excalidraw_room_url,omitempty"`
 }
 
 // GetConfig is mounted on the public (unauthenticated) route group because
@@ -48,6 +53,8 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 			config.PosthogHost = "https://us.i.posthog.com"
 		}
 	}
+
+	config.ExcalidrawRoomURL = os.Getenv("EXCALIDRAW_ROOM_URL")
 
 	writeJSON(w, http.StatusOK, config)
 }
