@@ -28,7 +28,7 @@ export interface ExcalidrawDrawerProps extends ExcalidrawEditorProps {
    *  editor. The editor bundle is never loaded in this state. */
   error?: Error | null;
   /** Called when the user clicks the "retry" button inside the error state.
-   *  Typically invalidates the scene query so the load is re-attempted. */
+   *  Typically refetches the scene query so the load is re-attempted. */
   onRetry?: () => void;
 }
 

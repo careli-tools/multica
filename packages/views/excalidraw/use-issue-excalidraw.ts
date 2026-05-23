@@ -63,7 +63,7 @@ export interface UseIssueExcalidraw {
   /** Non-null when the scene query failed. Consumers render an inline error
    *  state rather than a blank canvas. */
   error: Error | null;
-  /** Invalidates the scene query so the host can offer a "retry"
+  /** Refetches the scene query so the host can offer a "retry"
    *  affordance. */
   retry: () => void;
   /** Wired into ExcalidrawDrawer.onChange. */
