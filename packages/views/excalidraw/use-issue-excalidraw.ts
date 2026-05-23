@@ -87,7 +87,7 @@ export function useIssueExcalidraw(
 
   const retry = useCallback(() => {
     if (editingAttachmentId) {
-      queryClient.invalidateQueries({
+      queryClient.refetchQueries({
         queryKey: excalidrawKeys.scene(editingAttachmentId),
       });
     }
