@@ -54,6 +54,9 @@ export function AuthInitializer({
           allowSignup: cfg.allow_signup,
           googleClientId: cfg.google_client_id,
         });
+        if (cfg.excalidraw_room_url) {
+          configStore.getState().setExcalidrawRoomUrl(cfg.excalidraw_room_url);
+        }
         if (cfg.posthog_key) {
           initAnalytics({
             key: cfg.posthog_key,
