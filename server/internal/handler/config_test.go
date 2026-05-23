@@ -16,6 +16,7 @@ func TestGetConfigIncludesRuntimeAuthConfig(t *testing.T) {
 	t.Setenv("GOOGLE_CLIENT_ID", "google-client-id")
 	t.Setenv("POSTHOG_API_KEY", "phc_test")
 	t.Setenv("POSTHOG_HOST", "https://eu.i.posthog.com")
+	t.Setenv("EXCALIDRAW_ROOM_URL", "wss://draw.example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	w := httptest.NewRecorder()
@@ -47,5 +48,32 @@ func TestGetConfigIncludesRuntimeAuthConfig(t *testing.T) {
 	}
 	if cfg.AnalyticsEnvironment != "dev" {
 		t.Fatalf("analytics_environment: want dev, got %q", cfg.AnalyticsEnvironment)
+	}
+	if cfg.ExcalidrawRoomURL != "wss://draw.example.com" {
+		t.Fatalf("excalidraw_room_url: want wss://draw.example.com, got %q", cfg.ExcalidrawRoomURL)
+	}
+}
+
+func TestGetConfigOmitsExcalidrawRoomURLWhenUnset(t *testing.T) {
+	origStorage := testHandler.Storage
+	testHandler.Storage = &mockStorage{}
+	defer func() { testHandler.Storage = origStorage }()
+
+	t.Setenv("EXCALIDRAW_ROOM_URL", "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	w := httptest.NewRecorder()
+
+	testHandler.GetConfig(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetConfig: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if _, ok := raw["excalidraw_room_url"]; ok {
+		t.Fatalf("excalidraw_room_url: expected field to be omitted when unset, got %v", raw["excalidraw_room_url"])
 	}
 }
