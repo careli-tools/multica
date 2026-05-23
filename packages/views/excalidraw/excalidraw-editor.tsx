@@ -27,6 +27,10 @@ export interface ExcalidrawEditorProps {
   onChange?: (data: ExcalidrawSceneData) => void;
   viewModeEnabled?: boolean;
   debounceMs?: number;
+  /** excalidraw-room WebSocket URL for live collaboration. */
+  roomUrl?: string;
+  /** Unique room identifier (e.g. attachment or issue id). */
+  roomId?: string;
 }
 
 export default function ExcalidrawEditor({

@@ -5,17 +5,21 @@ interface ConfigState {
   cdnDomain: string;
   allowSignup: boolean;
   googleClientId: string;
+  excalidrawRoomUrl: string;
   setCdnDomain: (domain: string) => void;
   setAuthConfig: (config: { allowSignup: boolean; googleClientId?: string }) => void;
+  setExcalidrawRoomUrl: (url: string) => void;
 }
 
 export const configStore = createStore<ConfigState>((set) => ({
   cdnDomain: "",
   allowSignup: true,
   googleClientId: "",
+  excalidrawRoomUrl: "",
   setCdnDomain: (domain) => set({ cdnDomain: domain }),
   setAuthConfig: ({ allowSignup, googleClientId = "" }) =>
     set({ allowSignup, googleClientId }),
+  setExcalidrawRoomUrl: (url) => set({ excalidrawRoomUrl: url }),
 }));
 
 export function useConfigStore(): ConfigState;
