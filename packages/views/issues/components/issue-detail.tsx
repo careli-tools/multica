@@ -1107,6 +1107,16 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     },
   });
 
+  // Toast on scene load failure (in addition to the inline error state
+  // inside the drawer) so the user gets feedback even if they step away.
+  useEffect(() => {
+    if (excalidraw.error) {
+      toast.error(t(($) => $.detail.excalidraw_load_failed), {
+        description: excalidraw.error.message,
+      });
+    }
+  }, [excalidraw.error, t]);
+
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
   // shown for an issue that already has labels attached.
@@ -1732,6 +1742,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                   : false
               }
               onChange={excalidraw.handleChange}
+              error={excalidraw.error}
+              onRetry={excalidraw.retry}
             />
           </div>
           {excalidrawAttachments.length > 0 && (
