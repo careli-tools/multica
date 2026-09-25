@@ -11,6 +11,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import { DrawerSkeleton } from "./drawer-skeleton";
+import { useT } from "../i18n";
 import type {
   ExcalidrawEditorProps,
   ExcalidrawSceneData,
@@ -42,6 +43,7 @@ export function ExcalidrawDrawer({
   onRetry,
   ...editorProps
 }: ExcalidrawDrawerProps) {
+  const { t } = useT("editor");
   const handleClose = useCallback(() => onOpenChange(false), [onOpenChange]);
 
   if (!open) return null;
@@ -81,7 +83,7 @@ export function ExcalidrawDrawer({
             <AlertTriangle className="size-10 text-destructive" />
             <div>
               <h3 className="text-sm font-semibold">
-                Failed to load diagram
+                {t(($) => $.excalidraw.load_failed)}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {error.message}
@@ -89,7 +91,7 @@ export function ExcalidrawDrawer({
             </div>
             {onRetry && (
               <Button variant="outline" size="sm" onClick={onRetry}>
-                Retry
+                {t(($) => $.excalidraw.retry)}
               </Button>
             )}
           </div>
