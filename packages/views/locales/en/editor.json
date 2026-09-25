@@ -44,6 +44,8 @@
     "open_in_new_tab": "Open in new tab"
   },
   "excalidraw": {
+    "load_failed": "Failed to load diagram",
+    "retry": "Retry",
     "loading": "Loading diagram…",
     "render_failed": "Couldn't render this Excalidraw diagram",
     "open_file": "Open file",

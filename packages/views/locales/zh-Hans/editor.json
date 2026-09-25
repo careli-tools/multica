@@ -44,6 +44,8 @@
     "open_in_new_tab": "在新标签页打开"
   },
   "excalidraw": {
+    "load_failed": "加载图表失败",
+    "retry": "重试",
     "loading": "加载图表中…",
     "render_failed": "无法渲染该 Excalidraw 图表",
     "open_file": "打开文件",
