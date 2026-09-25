@@ -4,6 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { ExcalidrawDrawer } from "./excalidraw-drawer";
 
+vi.mock("../i18n", () => ({
+  useT: () => ({
+    t: (select: (resources: { excalidraw: { load_failed: string; retry: string } }) => string) =>
+      select({ excalidraw: { load_failed: "Failed to load diagram", retry: "Retry" } }),
+  }),
+}));
+
 // The shared theme hook isn't relevant to drawer-shell behavior.
 const themeRef = vi.hoisted(() => ({ current: "light" as string }));
 vi.mock("@multica/ui/components/common/theme-provider", () => ({
