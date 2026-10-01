@@ -161,6 +161,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 	actor := pluginActor{Type: "plugin"}
 	var memberUserID pgtype.UUID
 	var issueScope pgtype.UUID
+	var projectScope pgtype.UUID
 
 	switch {
 	case strings.HasPrefix(token, "mpc_"):
@@ -175,6 +176,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 		}
 		installationID = grant.InstallationID
 		issueScope = grant.IssueID
+		projectScope = grant.ProjectID
 		if grant.Actor.Type == "member" {
 			memberUserID = grant.Actor.ID
 		}
@@ -196,6 +198,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 	// The grant said which issue it was about. Carrying it here is what turns
 	// that from a comment into a check — see pluginIssueForUser.
 	caller.IssueScope = issueScope
+	caller.ProjectScope = projectScope
 
 	// A callback token that stands for a person is only as good as that
 	// person's membership TODAY. Re-checking here means revoking someone's
@@ -237,6 +240,10 @@ func (h *Handler) pluginIssueForUser(w http.ResponseWriter, r *http.Request, cal
 	// 404 rather than 403: the caller may well be able to see this issue by
 	// other means, and "you are scoped elsewhere" would confirm the id exists.
 	if caller.IssueScope.Valid && uuidToString(issue.ID) != uuidToString(caller.IssueScope) {
+		publicapiv1.WriteProblem(w, r, http.StatusNotFound, "not_found", "issue not found")
+		return db.Issue{}, false
+	}
+	if caller.ProjectScope.Valid && issue.ProjectID != caller.ProjectScope {
 		publicapiv1.WriteProblem(w, r, http.StatusNotFound, "not_found", "issue not found")
 		return db.Issue{}, false
 	}
@@ -298,7 +305,15 @@ func (h *Handler) GetPluginContext(w http.ResponseWriter, r *http.Request) {
 		issue = &loaded
 	}
 
-	writeJSON(w, http.StatusOK, publicPluginContext(h.PluginService.BuildPluginContext(caller, workspace, user, issue)))
+	payload := publicPluginContext(h.PluginService.BuildPluginContext(caller, workspace, user, issue))
+	if projectID := r.URL.Query().Get("project_id"); projectID != "" {
+		project, ok := h.pluginProjectForUser(w, r, caller, projectID)
+		if !ok {
+			return
+		}
+		payload.Project = &publicapiv1.ContextProject{ID: uuidToString(project.ID), Title: project.Title}
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func publicPluginContext(context service.PluginContext) publicapiv1.Context {
