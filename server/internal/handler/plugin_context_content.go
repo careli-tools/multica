@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -62,7 +63,7 @@ func (h *Handler) GetPluginProjectContext(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	writeJSON(w, 200, publicapiv1.ContextContent{ID: uuidToString(project.ID), WorkspaceID: uuidToString(project.WorkspaceID), Title: project.Title, Content: project.Description.String, CanWrite: pluginContextCanWrite(actor, false)})
+	writeJSON(w, 200, publicapiv1.ContextContent{ID: uuidToString(project.ID), WorkspaceID: uuidToString(project.WorkspaceID), Title: project.Title, Content: project.Description.String, CanWrite: pluginContextCanWrite(actor, false) && slices.Contains(caller.Scopes, plugincontract.ScopeProjectsWrite)})
 }
 func (h *Handler) PatchPluginProjectContext(w http.ResponseWriter, r *http.Request) {
 	caller, actor, ok := h.pluginCaller(w, r, plugincontract.ScopeProjectsWrite)
@@ -105,7 +106,7 @@ func (h *Handler) GetPluginWorkspaceContext(w http.ResponseWriter, r *http.Reque
 		publicapiv1.WriteProblem(w, r, 404, "not_found", "workspace not found")
 		return
 	}
-	writeJSON(w, 200, publicapiv1.ContextContent{ID: uuidToString(workspace.ID), WorkspaceID: uuidToString(workspace.ID), Title: workspace.Name, Content: workspace.Context.String, CanWrite: pluginContextCanWrite(actor, true)})
+	writeJSON(w, 200, publicapiv1.ContextContent{ID: uuidToString(workspace.ID), WorkspaceID: uuidToString(workspace.ID), Title: workspace.Name, Content: workspace.Context.String, CanWrite: pluginContextCanWrite(actor, true) && slices.Contains(caller.Scopes, plugincontract.ScopeWorkspaceWrite)})
 }
 func (h *Handler) PatchPluginWorkspaceContext(w http.ResponseWriter, r *http.Request) {
 	caller, actor, ok := h.pluginCaller(w, r, plugincontract.ScopeWorkspaceWrite)

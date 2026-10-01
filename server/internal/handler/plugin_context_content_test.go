@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"net/http/httptest"
@@ -34,6 +35,18 @@ func TestPluginProjectContextCompareAndSwap(t *testing.T) {
 func TestPluginContextWriteRequiresScope(t *testing.T) {
 	id := installPluginForAction(t, []string{"projects:read"})
 	project := dbfx.Project(t, "Read only")
+	read := httptest.NewRecorder()
+	testHandler.GetPluginProjectContext(read, pluginActionRequest("GET", "/projects/x/context", id, nil, map[string]string{"project_id": project}))
+	var data struct {
+		CanWrite bool `json:"can_write"`
+	}
+	if err := json.Unmarshal(read.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if read.Code != 200 || data.CanWrite {
+		t.Fatal("read-only grant advertised a write")
+	}
+
 	w := httptest.NewRecorder()
 	testHandler.PatchPluginProjectContext(w, pluginActionRequest("PATCH", "/projects/x/context", id, map[string]string{"expected_content": "", "content": "x"}, map[string]string{"project_id": project}))
 	if w.Code != 403 {
