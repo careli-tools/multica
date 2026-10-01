@@ -70,6 +70,15 @@ describe("surface bridge", () => {
     })));
   });
 
+  it("binds hook calls to the mounted project instead of guest-supplied targets", async () => {
+    const { port } = connectedBridge({ installationId: "installation-1", bridgeToken: TOKEN, projectId: "project-1" });
+    port.postMessage({ id: "r1", kind: "action", method: "POST", path: "/hooks/wissen", body: { trigger: "ui", project_id: "other", issue_id: "other-issue", input: { action: "context" } } });
+    await vi.waitFor(() => expect(mockCall).toHaveBeenCalledWith("installation-1", expect.objectContaining({
+      projectId: "project-1",
+      body: { trigger: "ui", project_id: "project-1", issue_id: undefined, input: { action: "context" } },
+    })));
+  });
+
   it("refuses paths and methods outside the Action API before fetch", async () => {
     const { port, posted } = connectedBridge();
     port.postMessage({ id: "bad-path", kind: "action", method: "GET", path: "/me" });

@@ -1,0 +1,5 @@
+# Build server/bin/server from the merged careli/v0.6.0 branch first.
+FROM ghcr.io/multica-ai/multica-backend:v0.6.0
+ARG COMMIT
+LABEL org.opencontainers.image.revision=$COMMIT
+COPY server/bin/server /app/server

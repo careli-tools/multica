@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
 import enIssues from "../locales/en/issues.json";
@@ -61,6 +61,21 @@ function installation(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe("context panel buttons", () => {
+  for (const type of ["project_panel", "workspace_panel"] as const) {
+    it(`opens a ${type} only after the user presses its button`, () => {
+      data.flagEnabled = true;
+      data.launch = {url:"https://plugin-content.example.test/plugin-surfaces/opaque",bridge_token:"proof",version:"1",digest:"abc"};
+      data.installed.plugins = [installation({surfaces:[{key:"context",type,name:"Context proposal",entry:"ui/main.js",platforms:[]}]})];
+      const { container } = render(<PluginPanelSection type={type} projectId={type === "project_panel" ? "project-1" : undefined} />, {wrapper:Wrapper});
+      expect(container.querySelector("iframe")).toBeNull();
+      fireEvent.click(screen.getByRole("button", {name:"Context proposal"}));
+      expect(container.querySelector("iframe")).not.toBeNull();
+      expect(screen.getByRole("button", {name:"Context proposal"})).toHaveAttribute("aria-expanded","true");
+    });
+  }
+});
 
 describe("PluginPanelSection", () => {
   beforeEach(() => {

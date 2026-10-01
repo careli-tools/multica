@@ -19,7 +19,7 @@ export interface PluginConfigField {
   multiline?: boolean;
 }
 
-export type PluginSurfaceType = "issue_panel" | "sidebar_panel" | "modal";
+export type PluginSurfaceType = "issue_panel" | "project_panel" | "workspace_panel" | "sidebar_panel" | "modal";
 
 export interface PluginSurface {
   key: string;
