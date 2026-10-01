@@ -9,7 +9,7 @@ API: GET/PATCH `/v1/projects/{project_id}/context`, GET/PATCH `/v1/workspace/con
 
 ## Build and deployment
 
-Only build production artifacts after merge. Build the backend with Go 1.26.6 and CGO_ENABLED=0 (`go build -ldflags '-X main.version=0.6.0-careli.1 -X main.commit=<merged SHA>' -o bin/server ./cmd/server`). Build web with Node22/pnpm10.28.2, `STANDALONE=true NEXT_PUBLIC_APP_VERSION=0.6.0-careli.1 pnpm --filter @multica/web build`.
+Build production images only after merge, with build artifacts from the identical merged source tree. A pre-merge verification build may be reused only after verifying tree identity. Build the backend with Go 1.26.6 and CGO_ENABLED=0 (`go build -ldflags '-X main.version=0.6.0-careli.1 -X main.commit=<merged SHA>' -o bin/server ./cmd/server`). Build web with Node22/pnpm10.28.2, `STANDALONE=true NEXT_PUBLIC_APP_VERSION=0.6.0-careli.1 pnpm --filter @multica/web build`.
 
 Then use deploy/Dockerfile.context-backend and deploy/Dockerfile.context-web with --build-arg COMMIT=<merged SHA>. The backend keeps the official image entrypoint, migrations and CLI; only /app/server changes. Web uses Debian libc, matching the host-built native Node modules. Dockerfile-specific ignores include only runtime artifacts, licenses and notices.
 
