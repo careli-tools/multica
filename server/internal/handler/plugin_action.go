@@ -162,6 +162,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 	var memberUserID pgtype.UUID
 	var issueScope pgtype.UUID
 	var projectScope pgtype.UUID
+	var callbackTrigger string
 
 	switch {
 	case strings.HasPrefix(token, "mpc_"):
@@ -177,6 +178,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 		installationID = grant.InstallationID
 		issueScope = grant.IssueID
 		projectScope = grant.ProjectID
+		callbackTrigger = grant.Trigger
 		if grant.Actor.Type == "member" {
 			memberUserID = grant.Actor.ID
 		}
@@ -199,6 +201,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 	// that from a comment into a check — see pluginIssueForUser.
 	caller.IssueScope = issueScope
 	caller.ProjectScope = projectScope
+	caller.CallbackTrigger = callbackTrigger
 
 	// A callback token that stands for a person is only as good as that
 	// person's membership TODAY. Re-checking here means revoking someone's

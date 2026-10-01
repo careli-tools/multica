@@ -121,6 +121,21 @@ func (s *PluginService) AgentHookTools(ctx context.Context, workspaceID pgtype.U
 	return tools, nil
 }
 
+// AgentHookScope is the resource the agent's task is about. It narrows the
+// callback token the same way an event's issue does, so an agent working on one
+// project's task cannot use the plugin to reach another project because the
+// model chose a different target in its tool input.
+//
+// Set at most one of the two: ProjectID when the task's issue belongs to a
+// project (the agent may then reach that project and its issues), IssueID when
+// it does not (the agent reaches only that issue). Both zero means the task has
+// no issue — a chat or autopilot task — and the grant stays unnarrowed, because
+// there is nothing to narrow it to.
+type AgentHookScope struct {
+	IssueID   pgtype.UUID
+	ProjectID pgtype.UUID
+}
+
 // InvokeAgentHook runs one agent-triggered hook.
 //
 // The actor is the AGENT, not the person who filed the issue and not the
@@ -128,7 +143,7 @@ func (s *PluginService) AgentHookTools(ctx context.Context, workspaceID pgtype.U
 // agent's, exactly as they would be if the agent had written them directly.
 // author_type already has a value for that, which is why this trigger needs no
 // new one.
-func (s *PluginService) InvokeAgentHook(ctx context.Context, installationID, hookKey string, agentID pgtype.UUID, input json.RawMessage) (HookResult, error) {
+func (s *PluginService) InvokeAgentHook(ctx context.Context, installationID, hookKey string, agentID pgtype.UUID, scope AgentHookScope, input json.RawMessage) (HookResult, error) {
 	caller, err := s.AuthorizePluginAction(ctx, installationID, pgtype.UUID{}, "")
 	if err != nil {
 		return HookResult{}, err
@@ -142,6 +157,8 @@ func (s *PluginService) InvokeAgentHook(ctx context.Context, installationID, hoo
 		Hook:         hook,
 		Trigger:      plugincontract.TriggerAgent,
 		Actor:        HookActor{Type: "agent", ID: agentID},
+		IssueID:      scope.IssueID,
+		ProjectID:    scope.ProjectID,
 		Input:        rawInputOrNil(input),
 	}, 1)
 }
