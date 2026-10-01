@@ -27,6 +27,8 @@ export interface PluginContext {
   workspace: { id: string; name: string; slug: string };
   user: { id: string; name: string };
   issue?: { id: string; identifier: string; title: string };
+  /** Present on project panels, where the host passes the mounted project to `/context`. */
+  project?: { id: string; title: string };
   /** Non-secret installation configuration. Secrets never reach the frame. */
   config: Record<string, unknown>;
   /** Domains this installation was granted via `net:` scopes. */
