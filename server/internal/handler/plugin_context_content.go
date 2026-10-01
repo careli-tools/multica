@@ -97,7 +97,11 @@ func (h *Handler) GetPluginWorkspaceContext(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if caller.IssueScope.Valid || caller.ProjectScope.Valid {
+	// Reading the workspace context stays open to a token bound to an agent's
+	// task: the context is shared guidance for the whole workspace, not a sibling
+	// of the task's project, and the plugin's own grant still decides whether
+	// the agent may use it. Writes below stay closed to every bound token.
+	if (caller.IssueScope.Valid || caller.ProjectScope.Valid) && caller.CallbackTrigger != plugincontract.TriggerAgent {
 		publicapiv1.WriteProblem(w, r, 403, "scope_denied", "callback is bound to another resource")
 		return
 	}
