@@ -6,6 +6,12 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../../locales/en/common.json";
 import enSettings from "../../locales/en/settings.json";
 
+vi.mock("../../plugins/plugin-panel-section", () => ({
+  PluginPanelSection: ({ type, projectId }: { type: string; projectId?: string }) => (
+    <div data-testid="plugin-context-mount" data-type={type} data-project={projectId} />
+  ),
+}));
+
 const mockUpdateWorkspace = vi.hoisted(() => vi.fn());
 const mockInvalidateQueries = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
