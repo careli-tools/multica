@@ -35,6 +35,9 @@ type PluginActionCaller struct {
 	// membership checks still apply on top.
 	IssueScope   pgtype.UUID
 	ProjectScope pgtype.UUID
+	// CallbackTrigger is the trigger of the hook a callback token was issued
+	// for; empty for session and install-token callers.
+	CallbackTrigger string
 }
 
 // AuthorizePluginAction performs the two checks that belong to the plugin: the
