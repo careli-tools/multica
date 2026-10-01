@@ -1,5 +1,7 @@
 "use client";
 
+import { PluginPanelSection } from "../../plugins/plugin-panel-section";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy } from "lucide-react";
 import { Input } from "@multica/ui/components/ui/input";
@@ -426,6 +428,8 @@ export function WorkspaceTab() {
               />
             )}
           </SettingsRow>
+
+          <PluginPanelSection key={workspace.id} type="workspace_panel" />
 
           <SettingsRow
             anchor="slug"

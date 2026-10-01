@@ -3252,11 +3252,11 @@ export class ApiClient {
    */
   async callPluginAction(
     installationId: string,
-    request: { method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; path: string; body?: unknown; issueId?: string },
+    request: { method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; path: string; body?: unknown; issueId?: string; projectId?: string },
   ): Promise<unknown> {
-    const query = request.path === "/context" && request.issueId
+    const query = request.path !== "/context" ? "" : request.issueId
       ? `?issue_id=${encodeURIComponent(request.issueId)}`
-      : "";
+      : request.projectId ? `?project_id=${encodeURIComponent(request.projectId)}` : "";
     return this.fetch<unknown>(`/api/plugin-bridge/v1${request.path}${query}`, {
       method: request.method,
       headers: { "X-Multica-Plugin-Installation": installationId },

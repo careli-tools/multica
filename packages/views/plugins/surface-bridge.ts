@@ -63,6 +63,7 @@ export interface SurfaceBridgeOptions {
   bridgeToken: string;
   /** Mounted-on issue, forwarded to /context so the surface knows where it is. */
   issueId?: string;
+  projectId?: string;
   onResize?: (height: number) => void;
 }
 
@@ -101,8 +102,12 @@ export function createSurfaceBridge(options: SurfaceBridgeOptions): SurfaceBridg
       const result = await api.callPluginAction(options.installationId, {
         method: request.method,
         path: request.path,
-        body: request.body,
+        // A surface cannot substitute a different mount target in a hook call.
+        body: request.path.startsWith("/hooks/") && request.body && typeof request.body === "object"
+          ? { ...request.body, issue_id: options.issueId, project_id: options.projectId }
+          : request.body,
         issueId: options.issueId,
+        projectId: options.projectId,
       });
       port.postMessage({ id: request.id, ok: true, status: 200, data: result });
     } catch (error) {

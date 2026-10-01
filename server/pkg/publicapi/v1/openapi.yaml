@@ -12,6 +12,90 @@ servers:
 security:
   - pluginBearer: []
 paths:
+  /projects/{project_id}/context:
+    parameters:
+      - in: path
+        name: project_id
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getProjectContext
+      x-multica-contract: plugin_extension
+      x-multica-scope: projects:read
+      responses:
+        "200":
+          description: Context or project issue choices
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: patchProjectContext
+      x-multica-contract: plugin_extension
+      x-multica-scope: projects:write
+      description: Human member only; workspace context requires owner/admin. Atomic comparison prevents overwriting concurrent edits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, expected_content]
+              properties:
+                content: {type: string, maxLength: 100000}
+                expected_content: {type: string, maxLength: 100000}
+      responses:
+        "200":
+          description: Context or project issue choices
+        "409":
+          description: Context changed since preview
+        default:
+          $ref: "#/components/responses/Problem"
+  /workspace/context:
+    get:
+      operationId: getWorkspaceContext
+      x-multica-contract: plugin_extension
+      x-multica-scope: workspace:read
+      responses:
+        "200":
+          description: Context or project issue choices
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: patchWorkspaceContext
+      x-multica-contract: plugin_extension
+      x-multica-scope: workspace:write
+      description: Human member only; workspace context requires owner/admin. Atomic comparison prevents overwriting concurrent edits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, expected_content]
+              properties:
+                content: {type: string, maxLength: 100000}
+                expected_content: {type: string, maxLength: 100000}
+      responses:
+        "200":
+          description: Context or project issue choices
+        "409":
+          description: Context changed since preview
+        default:
+          $ref: "#/components/responses/Problem"
+  /projects/{project_id}/issues:
+    parameters:
+      - in: path
+        name: project_id
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getProjectIssues
+      x-multica-contract: plugin_extension
+      x-multica-scope: issues:read
+      responses:
+        "200":
+          description: Context or project issue choices
+        default:
+          $ref: "#/components/responses/Problem"
   /context:
     get:
       operationId: getPluginContext
