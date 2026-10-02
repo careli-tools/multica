@@ -399,7 +399,7 @@ Claim (Daemon) ──► plugin_hook_tools (http-Hooks)  ──► lokaler MCP-S
   Projekt A kann Workspace-Speicher lesen und schreiben, den Projekt-B-Hooks befüllt haben (Seitenkanal, kein
   Zugriff auf fremde Issues oder Projekte). (3) `issue_id`/`project_id` im signierten Body gelten jetzt für **alle**
   Trigger, nicht nur für `ui`; ein Plugin, das „`issue_id` vorhanden“ als UI-Auflösung liest, verhält sich bei
-  Agent-Hooks neu. Stand: committet im Arbeitszweig, nicht ausgerollt.
+  Agent-Hooks neu. Stand: gemergt (Host PR #24, `f87a01ebe`) und seit 02.10.2026 ausgerollt.
 - **`mcp`-Transport.** Der Autor betreibt einen eigenen MCP-Server; dessen Werkzeuge ändert er
   zur Laufzeit selbst. Deshalb **pinnt** ein Admin sie ([`plugin_mcp_transport.go`](../../server/internal/service/plugin_mcp_transport.go)):
   `GET …/mcp/{hook}/tools` entdeckt (übernimmt nichts), `PUT` genehmigt nach Name **und** Schema-Digest.
