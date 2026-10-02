@@ -10,16 +10,16 @@ dupliziert (siehe [Quellen](#quellen)).
 
 | Punkt | Stand |
 |---|---|
-| Plugin-Key / Version | `de.careli.wissen` **0.2.1** (Manifest und `server/package.json`; analysiert wurde 0.2.0, 0.2.1 ändert nur die unten genannten Punkte) |
+| Plugin-Key / Version | `de.careli.wissen` **0.3.0** (live seit 02.10.2026; analysiert wurde 0.2.0, 0.2.1 korrigiert Punkte aus §12, 0.3.0 bringt das Gedächtnis aus §13) |
 | Quellcode | `/srv/multica-plugins/wissen` (Unterordner des Monorepos `careli-tools/multica-plugins`, Branch `main`) |
 | Laufzeit | systemd-Dienst `multica-wissen`, Node 22.13+, `127.0.0.1:8092`, Caddy-Präfix `plugins.careli.de/wissen/*` |
 | Zustand | SQLite `/var/lib/multica-wissen/jobs.sqlite` (nur für den Dienst lesbar) |
 | Konfiguration | `/etc/multica-wissen/{wissen.env, policy.json, installations.json}` |
-| Installation | fünf, alle `enabled`: `careli` sowie seit 02.10.2026 `handelsvertreter`, `carelios`, `saturn-sffn` (Management) und `knowledge-system`. Policy-Freigaben gibt es nur für `careli`; in den vier anderen Workspaces wird jeder Aufruf mit „Kein Agent … freigegeben“ abgelehnt, bis der Owner Freigaben einträgt |
+| Installation | fünf, alle `enabled`: `careli`, `handelsvertreter`, `carelios`, `saturn-sffn` (Management) und `knowledge-system`. Freigaben: in `careli` Owner und zwei Manager-Agenten; in den vier anderen Workspaces alle Mitglieder und Agenten vom 02.10.2026 mit allen Projekten, Workspace-Kontext nur für Owner/Admins. Neue Mitglieder, Agenten oder Projekte müssen nachgetragen werden |
 | Host-Voraussetzung | Careli-Kontexterweiterung CA-431 auf Multica 0.6.0, siehe [plugin-system.md §9](plugin-system.md) |
 | Stichprobe live (read-only) | `systemctl is-active` → `active`; `/healthz` → `{"ok":true,"installations":5}` (Stand 02.10.2026); Caddy-Healthz 200 |
 
-Das Plugin hat drei Teile: das **Bundle** (Manifest + `ui/main.js`, 0.2.1 als ZIP, nur das wird in
+Das Plugin hat drei Teile (und seit 0.3.0 einen zweiten Hook, das Gedächtnis, §13): das **Bundle** (Manifest + `ui/main.js`, 0.2.1 als ZIP, nur das wird in
 Multica veröffentlicht), den **Hook-Server** (läuft auf der VM, nicht im Multica-Prozess) und den
 **Agenten dahinter** (Hermes-Profil `wissen`, erreichbar über LiteLLM).
 
@@ -324,7 +324,7 @@ Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
    Senden gleich: Zustand `uncertain` mit „Übermittlung nicht bestätigt … der Agent könnte den Auftrag erhalten
    haben“. Bei einem Transportabbruch oder 5xx stimmt das. Bei HTTP 4xx (404 Agent unbekannt, 401/403 Key) hat
    der Agent den Auftrag nachweislich **nicht** erhalten; ein Neuversand wäre gefahrlos, und die Meldung nennt
-   die Ursache nicht. *Beobachtet am 02.10.2026* (Fall unten). Offen; Vorschlag für 0.2.2: 4xx beim Senden → `failed`
+   die Ursache nicht. *Beobachtet am 02.10.2026* (Fall unten). *Behoben in 0.3.0:* 4xx beim Senden → `failed`
    mit konkreter Meldung („Agent am Gateway nicht erreichbar bzw. nicht freigegeben, HTTP 404“).
 9. **Abhängigkeit von der LiteLLM-Agent-Registry.** Das Plugin ist nur so verfügbar wie der A2A-Agent `wissen` am
    Gateway. LiteLLM 1.103.2 (KMS-244) lädt Agenten nach einem Neustart nur, wenn `general_settings.supported_db_objects`
@@ -340,6 +340,48 @@ Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
    **Schnellprüfung bei „keine Antwort“:** (1) `GET https://litellm.careli.de/a2a/wissen/.well-known/agent-card.json`
    mit dem Plugin-Key → 200 erwartet, 404 heißt Registry leer; (2) Jobzustand in `jobs.sqlite` (`uncertain` direkt
    nach dem Anlegen = Senden fehlgeschlagen); (3) `plugin_invocation` nur für den Host-Teil.
+
+## 13. Gedächtnis für Agenten (0.3.0)
+
+Quelle: [`memory.mjs`](file:///srv/multica-plugins/wissen/server/src/memory.mjs),
+[`sync.mjs`](file:///srv/multica-plugins/wissen/server/src/sync.mjs),
+[`mcp.mjs`](file:///srv/multica-plugins/wissen/server/src/mcp.mjs); Plugin-PR #13 (`755b2f3`).
+
+**Warum im Plugin:** Multica behält bisher nur bei Hermes Erinnerungen über Tasks hinweg, und zwar pro Profil
+(`execenv/hermes_memory.go`). Codex-Memory schaltet der Daemon ab (`execenv/codex_memory.go`), Claude Code merkt sich nur
+die Session pro Issue. Ein Plugin-Hook mit Trigger `agent` erreicht dagegen jede Runtime über dasselbe MCP-Werkzeug
+`multica-plugins` (`daemon/plugin_hook_mcp.go`), und der Host signiert die Agent-ID. Ein Gedächtnis, das an dieser ID
+hängt, gilt deshalb runtime-übergreifend.
+
+**Hook `gedaechtnis`** (nur Trigger `agent`, eigener Pfad `/hooks/gedaechtnis`) mit `recall`, `remember`, `list` und
+`forget`.
+- Datenmodell nach Semantica-`AgentContext`: Agent = `user_id`, Issue = `conversation_id`, dazu Aufbewahrungsfrist,
+  Obergrenze und `forget`.
+- Ablage SQLite mit FTS5 in `jobs.sqlite`.
+- Sichtbarkeit `private` (Standard), `project` oder `workspace`. Ob eine Task Projekt-Einträge sieht, entscheidet nur das
+  signierte `project_id` aus der Ziel-Bindung von Host PR #24 (§12 Punkt 1).
+- Freigabe pro Workspace für alle Agenten dort (`policy.memory.workspaces`).
+- Abrufen geschieht nicht automatisch, weil Hooks nicht vor jedem Zug laufen. Die Werkzeugbeschreibung fordert den Agenten
+  auf, zu Beginn `recall` zu nutzen.
+
+**Semantica:** Geteilte Entscheidungen gehen im Hintergrund über LiteLLM-MCP `semantica` in den Corporate-Graphen:
+`record_decision`, danach `update_node` mit Multica-IDs, beim Ersetzen `update_node` mit `status: superseded`.
+`recall` mit `kind: decision` fragt zusätzlich `find_precedents` ab.
+- Der Schlüssel `multica-wissen-plugin` darf dafür nur diese drei Werkzeuge.
+- Kein Schreiben, solange `semantica-miner.service` läuft: Sein Nachtlauf verwirft sonst den Graph-Teil
+  (Ein-Schreiber-Regel).
+- Grundlage ist der Owner-Entscheid vom 02.10.2026: Die Regel vom 11.09. (über MCP nur die mitgelieferten
+  `semantica-mcp`-Werkzeuge, keine eigene Brücke) gilt weiter, ist für Integrationen in andere Werkzeuge aber leicht
+  gelockert; KMS-230 (Decision-Knoten, am 30.09. zurückgestellt) ist für diesen Weg aufgehoben.
+
+**Gemessen:**
+- Wegwerf-Instanz von `semantica-mcp`: Eine neue Sitzung braucht beim ersten Aufruf 24 s. Darum schreibt der Hook nicht
+  selbst, sondern eine Warteschlange im Hintergrund. `record_decision` wird nie wiederholt, weil der Server die ID vergibt.
+- Live über das Gateway: `find_precedents` 145–907 ms.
+- Eine ersetzte Entscheidung liefert `find_precedents` bis zum nächsten Neustart des Servers weiter; das Plugin filtert
+  die selbst ersetzten heraus.
+
+**Nebenbei behoben:** §12 Punkt 8. Ein eindeutiges HTTP 4xx beim Senden (außer 408) ergibt jetzt `failed` mit HTTP-Code.
 
 ## Grenzen der Analyse
 
