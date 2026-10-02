@@ -312,7 +312,7 @@ Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
    aber der Nutzer sieht „nicht bestätigt“, wo „Antwort unbrauchbar“ zutreffender wäre. *Behoben in 0.2.1:*
    Der Zustand bleibt `uncertain` (kein Neuversand), bei `invalid_response`/`empty_result` nennt die Meldung die
    unbrauchbare Antwort.
-5. **Toter Code.** [`server/src/multica-app.mjs`](file:///srv/multica-plugins/wissen/server/src/multica-app.mjs)
+5. **Toter Code.** `server/src/multica-app.mjs` (existiert seit 0.2.1 nicht mehr)
    (Client mit `MULTICA_PAT`) wird von keinem Modul in `server/src` importiert; er scheint eine Kopie aus der
    gemeinsamen `template/` zu sein (CA-436 änderte darin vier Zeilen). *In 0.2.1 entfernt;* `template/` behält ihre Kopie.
 6. **Antwortzeit.** 71–234 s gemessen; ein Aufruf mit 234 s liegt über den früheren Messwerten (Handover 30.09.).
