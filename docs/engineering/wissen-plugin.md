@@ -328,14 +328,15 @@ Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
    mit konkreter Meldung („Agent am Gateway nicht erreichbar bzw. nicht freigegeben, HTTP 404“).
 9. **Abhängigkeit von der LiteLLM-Agent-Registry.** Das Plugin ist nur so verfügbar wie der A2A-Agent `wissen` am
    Gateway. LiteLLM 1.103.2 (KMS-244) lädt Agenten nach einem Neustart nur, wenn `general_settings.supported_db_objects`
-   fehlt; die produktive Liste `["mcp","models","guardrails"]` schließt sie aus, und `agents` ist kein gültiger Wert.
+   fehlt; die damalige Liste `["mcp","models","guardrails"]` schloss sie aus, und `agents` ist kein gültiger Wert.
    **Fall 02.10.2026:** Nach dem Neustart um 22:50 UTC war die Registry leer, `POST /a2a/wissen` lieferte 404, und zwei
    Testfragen in `careli` (00:39 und 00:43 UTC) endeten `uncertain`, ohne dass im Plugin-Log etwas stand (der Dienst
    loggt keine Hook-Aufrufe, die Fehlerursache wird bewusst nicht gespeichert). Diagnose: `plugin_invocation` zeigt den
    Hook als `ok` (der Hook selbst hat nur den Auftrag eingereiht), die Wahrheit steht in `jobs.sqlite` und im
    LiteLLM-Log. Die vier Agenten wurden per `PATCH /v1/agents/{id}` mit `{}` zur Laufzeit neu registriert; das gilt
-   **nur bis zum nächsten LiteLLM-Neustart**. Der Dauer-Fix ist eine eigene Aufgabe im LiteLLM-Betrieb
-   (`~/docs/Infrastruktur/LiteLLM/Handover.md` auf der VM, Eintrag 02.10.2026, 01:04 UTC).
+   zunächst nur zur Laufzeit. **Dauerhaft behoben** seit 01:05 UTC: `supported_db_objects` steht auf `null`, LiteLLM lädt
+   damit alle DB-Objekte inklusive Agenten (`~/docs/Infrastruktur/LiteLLM/Handover.md` auf der VM, Einträge 02.10.2026).
+   Nicht belegt ist das Verhalten über einen Neustart hinweg; beim nächsten geplanten Neustart `/v1/agents` prüfen.
    **Schnellprüfung bei „keine Antwort“:** (1) `GET https://litellm.careli.de/a2a/wissen/.well-known/agent-card.json`
    mit dem Plugin-Key → 200 erwartet, 404 heißt Registry leer; (2) Jobzustand in `jobs.sqlite` (`uncertain` direkt
    nach dem Anlegen = Senden fehlgeschlagen); (3) `plugin_invocation` nur für den Host-Teil.
