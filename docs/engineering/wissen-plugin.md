@@ -15,9 +15,9 @@ dupliziert (siehe [Quellen](#quellen)).
 | Laufzeit | systemd-Dienst `multica-wissen`, Node 22.13+, `127.0.0.1:8092`, Caddy-Präfix `plugins.careli.de/wissen/*` |
 | Zustand | SQLite `/var/lib/multica-wissen/jobs.sqlite` (nur für den Dienst lesbar) |
 | Konfiguration | `/etc/multica-wissen/{wissen.env, policy.json, installations.json}` |
-| Installation | eine, im Workspace `careli`, `enabled` |
+| Installation | fünf, alle `enabled`: `careli` sowie seit 02.10.2026 `handelsvertreter`, `carelios`, `saturn-sffn` (Management) und `knowledge-system`. Policy-Freigaben gibt es nur für `careli`; in den vier anderen Workspaces wird jeder Aufruf mit „Kein Agent … freigegeben“ abgelehnt, bis der Owner Freigaben einträgt |
 | Host-Voraussetzung | Careli-Kontexterweiterung CA-431 auf Multica 0.6.0, siehe [plugin-system.md §9](plugin-system.md) |
-| Stichprobe live (read-only) | `systemctl is-active` → `active`; `/healthz` → `{"ok":true,"installations":1}`; Caddy-Healthz 200 |
+| Stichprobe live (read-only) | `systemctl is-active` → `active`; `/healthz` → `{"ok":true,"installations":5}` (Stand 02.10.2026); Caddy-Healthz 200 |
 
 Das Plugin hat drei Teile: das **Bundle** (Manifest + `ui/main.js`, 0.2.1 als ZIP, nur das wird in
 Multica veröffentlicht), den **Hook-Server** (läuft auf der VM, nicht im Multica-Prozess) und den
@@ -319,6 +319,26 @@ Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
    Die Frist von 20 Minuten hat damit reichlich Spielraum; eine Nutzererwartung an „Sekunden“ wäre falsch.
 7. **Versionsstand.** Die jüngsten Commits im Monorepo (`CA-436`, `CA-438`, „0.3.1“) betreffen `notify`, `gtasks`
    und `template`, nicht Wissen; zum Zeitpunkt der Analyse blieb Wissen 0.2.0 (seit 02.10.2026 0.2.1).
+
+8. **Ein eindeutiges 4xx beim Senden wird als `uncertain` gezeigt.** `worker.mjs` behandelt jeden Fehler beim
+   Senden gleich: Zustand `uncertain` mit „Übermittlung nicht bestätigt … der Agent könnte den Auftrag erhalten
+   haben“. Bei einem Transportabbruch oder 5xx stimmt das. Bei HTTP 4xx (404 Agent unbekannt, 401/403 Key) hat
+   der Agent den Auftrag nachweislich **nicht** erhalten; ein Neuversand wäre gefahrlos, und die Meldung nennt
+   die Ursache nicht. *Beobachtet am 02.10.2026* (Fall unten). Offen; Vorschlag für 0.2.2: 4xx beim Senden → `failed`
+   mit konkreter Meldung („Agent am Gateway nicht erreichbar bzw. nicht freigegeben, HTTP 404“).
+9. **Abhängigkeit von der LiteLLM-Agent-Registry.** Das Plugin ist nur so verfügbar wie der A2A-Agent `wissen` am
+   Gateway. LiteLLM 1.103.2 (KMS-244) lädt Agenten nach einem Neustart nur, wenn `general_settings.supported_db_objects`
+   fehlt; die produktive Liste `["mcp","models","guardrails"]` schließt sie aus, und `agents` ist kein gültiger Wert.
+   **Fall 02.10.2026:** Nach dem Neustart um 22:50 UTC war die Registry leer, `POST /a2a/wissen` lieferte 404, und zwei
+   Testfragen in `careli` (00:39 und 00:43 UTC) endeten `uncertain`, ohne dass im Plugin-Log etwas stand (der Dienst
+   loggt keine Hook-Aufrufe, die Fehlerursache wird bewusst nicht gespeichert). Diagnose: `plugin_invocation` zeigt den
+   Hook als `ok` (der Hook selbst hat nur den Auftrag eingereiht), die Wahrheit steht in `jobs.sqlite` und im
+   LiteLLM-Log. Die vier Agenten wurden per `PATCH /v1/agents/{id}` mit `{}` zur Laufzeit neu registriert; das gilt
+   **nur bis zum nächsten LiteLLM-Neustart**. Der Dauer-Fix ist eine eigene Aufgabe im LiteLLM-Betrieb
+   (`~/docs/Infrastruktur/LiteLLM/Handover.md` auf der VM, Eintrag 02.10.2026, 01:04 UTC).
+   **Schnellprüfung bei „keine Antwort“:** (1) `GET https://litellm.careli.de/a2a/wissen/.well-known/agent-card.json`
+   mit dem Plugin-Key → 200 erwartet, 404 heißt Registry leer; (2) Jobzustand in `jobs.sqlite` (`uncertain` direkt
+   nach dem Anlegen = Senden fehlgeschlagen); (3) `plugin_invocation` nur für den Host-Teil.
 
 ## Grenzen der Analyse
 
