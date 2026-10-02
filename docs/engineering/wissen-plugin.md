@@ -10,7 +10,7 @@ dupliziert (siehe [Quellen](#quellen)).
 
 | Punkt | Stand |
 |---|---|
-| Plugin-Key / Version | `de.careli.wissen` **0.2.0** (Manifest und `server/package.json`) |
+| Plugin-Key / Version | `de.careli.wissen` **0.2.1** (Manifest und `server/package.json`; analysiert wurde 0.2.0, 0.2.1 ändert nur die unten genannten Punkte) |
 | Quellcode | `/srv/multica-plugins/wissen` (Unterordner des Monorepos `careli-tools/multica-plugins`, Branch `main`) |
 | Laufzeit | systemd-Dienst `multica-wissen`, Node 22.13+, `127.0.0.1:8092`, Caddy-Präfix `plugins.careli.de/wissen/*` |
 | Zustand | SQLite `/var/lib/multica-wissen/jobs.sqlite` (nur für den Dienst lesbar) |
@@ -19,7 +19,7 @@ dupliziert (siehe [Quellen](#quellen)).
 | Host-Voraussetzung | Careli-Kontexterweiterung CA-431 auf Multica 0.6.0, siehe [plugin-system.md §9](plugin-system.md) |
 | Stichprobe live (read-only) | `systemctl is-active` → `active`; `/healthz` → `{"ok":true,"installations":1}`; Caddy-Healthz 200 |
 
-Das Plugin hat drei Teile: das **Bundle** (Manifest + `ui/main.js`, 0.2.0 als ZIP, nur das wird in
+Das Plugin hat drei Teile: das **Bundle** (Manifest + `ui/main.js`, 0.2.1 als ZIP, nur das wird in
 Multica veröffentlicht), den **Hook-Server** (läuft auf der VM, nicht im Multica-Prozess) und den
 **Agenten dahinter** (Hermes-Profil `wissen`, erreichbar über LiteLLM).
 
@@ -276,12 +276,12 @@ leere Capability-Menge, `UMask=0077`, schreibt nur nach `/var/lib/multica-wissen
 
 ## 12. Beobachtungen
 
-Beim Lesen aufgefallen. Stand der Korrekturen: Die Punkte 2, 4 und 5 sind als Änderung für Version 0.2.1 vorbereitet
-(Patch gegen `284cb4d`, 73 von 73 Tests grün). Sie ist **nicht committet, nicht gemergt und nicht ausgerollt**; live
-ist 0.2.0 und `/srv/multica-plugins` blieb unverändert. Punkt 1 ist im
-Host-Repo umgesetzt (nicht committet). Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
+Beim Lesen aufgefallen. Stand der Korrekturen (02.10.2026): Die Punkte 2, 4 und 5 sind mit Plugin 0.2.1 live
+([Plugin PR #9](https://github.com/careli-tools/multica-plugins/pull/9), `4b21601`, 73 von 73 Tests). Punkt 1 ist im
+Host live ([Host PR #24](https://github.com/careli-tools/multica/pull/24), `f87a01ebe`, Images `v0.6.0-careli.2`).
+Punkt 3 ist eine Betriebsfrage und bewusst offen; 6 und 7 sind reine Messwerte.
 
-1. **Agent-Aufrufe hatten im Host keine Ziel-Bindung (im Host umgesetzt, nicht ausgerollt).** `InvokeAgentHook`
+1. **Agent-Aufrufe hatten im Host keine Ziel-Bindung (seit 02.10.2026 behoben, live).** `InvokeAgentHook`
    setzte weder Issue noch Projekt im Callback-Token; der Agent wählte das Ziel im Modell-Input, und die einzige
    Grenze war die `policy.json` (Workspace, Projekt, Akteur). Ein Agent in einer Task von Projekt A erreichte damit
    jedes Projekt, das die Policy für ihn listet. Jetzt bindet der Host den Token an das Projekt des Task-Issues,
@@ -297,7 +297,8 @@ Host-Repo umgesetzt (nicht committet). Punkt 3 ist eine Betriebsfrage und bewuss
      genau sein Issue.
    - Das Wissens-Plugin nutzt `storage:*` nicht; das Restrisiko des nicht eingeengten Workspace-Speichers trifft es
      daher nicht (siehe [plugin-system.md §8](plugin-system.md)).
-   - Wirksam wird das erst, wenn der Host-Stand gemergt und ausgerollt ist (Host-Image, nicht Plugin).
+   - Wirksam seit dem Host-Deploy am 02.10.2026 (Host-Image, nicht Plugin). Ein echter Agent-Aufruf mit gebundenem
+     Token im Livebetrieb wurde nicht ausgelöst; belegt ist das Verhalten durch Tests.
    Das Plugin braucht dafür keine Änderung; der Host liefert `issue_id`/`project_id` zusätzlich im signierten Body.
 2. **`preview`/`apply` stehen im Agent-Schema.** Das `input_schema` ist für beide Trigger gleich, der Service
    verweigert diese Aktionen für Agenten mit 403. Kosmetisch, kostet einen Modellversuch. *Behoben in 0.2.1:*
@@ -317,7 +318,7 @@ Host-Repo umgesetzt (nicht committet). Punkt 3 ist eine Betriebsfrage und bewuss
 6. **Antwortzeit.** 71–234 s gemessen; ein Aufruf mit 234 s liegt über den früheren Messwerten (Handover 30.09.).
    Die Frist von 20 Minuten hat damit reichlich Spielraum; eine Nutzererwartung an „Sekunden“ wäre falsch.
 7. **Versionsstand.** Die jüngsten Commits im Monorepo (`CA-436`, `CA-438`, „0.3.1“) betreffen `notify`, `gtasks`
-   und `template`, nicht Wissen; Wissen bleibt 0.2.0.
+   und `template`, nicht Wissen; zum Zeitpunkt der Analyse blieb Wissen 0.2.0 (seit 02.10.2026 0.2.1).
 
 ## Grenzen der Analyse
 
