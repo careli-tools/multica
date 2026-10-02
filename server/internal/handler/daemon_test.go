@@ -100,24 +100,44 @@ func TestRemoteMCPDaemonTokenForClaim(t *testing.T) {
 		WorkspaceID: parseUUID(testWorkspaceID),
 		DaemonID:    strToText("daemon-remote-mcp"),
 	}
-	raw, params, err := remoteMCPDaemonTokenForClaim(AgentTaskResponse{
-		RemoteMCPConnections: []remotemcp.Connection{{ContributionKey: "mobbin"}},
-	}, runtime)
-	if err != nil {
-		t.Fatalf("remoteMCPDaemonTokenForClaim: %v", err)
-	}
-	if !strings.HasPrefix(raw, "mdt_") {
-		t.Fatalf("raw token has unexpected prefix")
-	}
-	if len(params) != 1 || params[0].TokenHash != auth.HashToken(raw) {
-		t.Fatalf("daemon token params do not contain the generated token hash")
-	}
-	if params[0].WorkspaceID != runtime.WorkspaceID || params[0].DaemonID != "daemon-remote-mcp" {
-		t.Fatalf("daemon token scope = (%v, %q)", params[0].WorkspaceID, params[0].DaemonID)
-	}
-	remaining := time.Until(params[0].ExpiresAt.Time)
-	if remaining < 23*time.Hour || remaining > 24*time.Hour {
-		t.Fatalf("daemon token lifetime = %s, want about 24h", remaining)
+	for _, tc := range []struct {
+		name      string
+		resp      AgentTaskResponse
+		wantToken bool
+	}{
+		{"no daemon tools", AgentTaskResponse{}, false},
+		{"remote MCP only", AgentTaskResponse{RemoteMCPConnections: []remotemcp.Connection{{ContributionKey: "mobbin"}}}, true},
+		{"plugin hook only", AgentTaskResponse{PluginHookTools: []service.PluginHookTool{{HookKey: "gedaechtnis"}}}, true},
+		{"both tool types", AgentTaskResponse{
+			RemoteMCPConnections: []remotemcp.Connection{{ContributionKey: "mobbin"}},
+			PluginHookTools:      []service.PluginHookTool{{HookKey: "gedaechtnis"}},
+		}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, params, err := remoteMCPDaemonTokenForClaim(tc.resp, runtime)
+			if err != nil {
+				t.Fatalf("remoteMCPDaemonTokenForClaim: %v", err)
+			}
+			if !tc.wantToken {
+				if raw != "" || len(params) != 0 {
+					t.Fatal("token generated without daemon tools")
+				}
+				return
+			}
+			if !strings.HasPrefix(raw, "mdt_") {
+				t.Fatal("raw token has unexpected prefix")
+			}
+			if len(params) != 1 || params[0].TokenHash != auth.HashToken(raw) {
+				t.Fatal("daemon token params do not contain the generated token hash")
+			}
+			if params[0].WorkspaceID != runtime.WorkspaceID || params[0].DaemonID != "daemon-remote-mcp" {
+				t.Fatalf("daemon token scope = (%v, %q)", params[0].WorkspaceID, params[0].DaemonID)
+			}
+			remaining := time.Until(params[0].ExpiresAt.Time)
+			if remaining < 23*time.Hour || remaining > 24*time.Hour {
+				t.Fatalf("daemon token lifetime = %s, want about 24h", remaining)
+			}
+		})
 	}
 }
 
