@@ -376,7 +376,7 @@ type AgentTaskResponse struct {
 	// than whenever a daemon happens to restart.
 	PluginHookTools []service.PluginHookTool `json:"plugin_hook_tools,omitempty"`
 	// RemoteMCPDaemonToken is a short-lived, workspace-and-daemon scoped
-	// credential used only by the local daemon's write-only Remote MCP broker.
+	// credential used by the local daemon's Remote MCP broker and plugin hooks.
 	// It is never injected into the agent process.
 	RemoteMCPDaemonToken string `json:"remote_mcp_daemon_token,omitempty"`
 	// WorkspaceContext is the workspace-level system prompt set in workspace
