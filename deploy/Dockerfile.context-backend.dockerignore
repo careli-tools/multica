@@ -2,3 +2,5 @@
 !server/
 !server/bin/
 !server/bin/server
+!server/migrations/
+!server/migrations/**
