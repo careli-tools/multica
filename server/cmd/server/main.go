@@ -850,6 +850,11 @@ func main() {
 	if err := schedulerMgr.Register(scheduler.PluginHookScheduleDispatchJob(queries, h.PluginService)); err != nil {
 		slog.Warn("scheduler: failed to register plugin_hook_schedule_dispatch job", "error", err)
 	}
+	if h.NotificationDelivery != nil {
+		if err := schedulerMgr.Register(scheduler.NotificationDeliveryJob(h.NotificationDelivery)); err != nil {
+			slog.Error("scheduler: failed to register notification delivery job", "error", err)
+		}
+	}
 	go func() {
 		_ = schedulerMgr.Run(sweepCtx)
 	}()

@@ -14,6 +14,25 @@ const NOTIFICATION_GROUP_KEYS: readonly NotificationGroupKey[] = [
   "system_notifications",
 ];
 
+const DELIVERY_PREFERENCE_KEYS = [
+  "email_enabled",
+  "email_address",
+  "telegram_enabled",
+  "digest_minutes",
+  "daily_report_enabled",
+  "daily_report_time",
+  "daily_report_timezone",
+  "daily_report_agent_id",
+  "daily_report_format",
+  "daily_report_instructions",
+  "channel_event_assigned",
+  "channel_event_mentioned",
+  "channel_event_mention_all",
+  "channel_event_status_changed",
+  "channel_event_task_failed",
+  "channel_event_task_completed",
+] as const;
+
 function preferenceValue(
   preferences: NotificationPreferences,
   key: NotificationGroupKey,
@@ -30,12 +49,21 @@ export function deriveNotificationPreferencePatch(
   next: NotificationPreferences,
 ): NotificationPreferences {
   const patch: NotificationPreferences = {};
+  const previousValues = previous as unknown as Record<string, string | undefined>;
+  const nextValues = next as unknown as Record<string, string | undefined>;
+  const patchValues = patch as unknown as Record<string, string | undefined>;
 
   for (const key of NOTIFICATION_GROUP_KEYS) {
     const previousValue = preferenceValue(previous, key);
     const nextValue = preferenceValue(next, key);
     if (previousValue !== nextValue) {
       patch[key] = nextValue;
+    }
+  }
+
+  for (const key of DELIVERY_PREFERENCE_KEYS) {
+    if (previousValues[key] !== nextValues[key] && nextValues[key] !== undefined) {
+      patchValues[key] = nextValues[key];
     }
   }
 
@@ -48,6 +76,8 @@ export function applyNotificationPreferencePatch(
   patch: NotificationPreferences,
 ): NotificationPreferences {
   const next = { ...current };
+  const patchValues = patch as unknown as Record<string, string | undefined>;
+  const nextValues = next as unknown as Record<string, string | undefined>;
 
   for (const key of NOTIFICATION_GROUP_KEYS) {
     const value = patch[key];
@@ -56,6 +86,11 @@ export function applyNotificationPreferencePatch(
     } else if (value === "all") {
       delete next[key];
     }
+  }
+
+  for (const key of DELIVERY_PREFERENCE_KEYS) {
+    const value = patchValues[key];
+    if (value !== undefined) nextValues[key] = value;
   }
 
   return next;
@@ -71,6 +106,10 @@ export function rollbackNotificationPreferencePatch(
   previous: NotificationPreferences,
 ): NotificationPreferences {
   const next = { ...current };
+  const currentValues = current as unknown as Record<string, string | undefined>;
+  const patchValues = patch as unknown as Record<string, string | undefined>;
+  const previousValues = previous as unknown as Record<string, string | undefined>;
+  const nextValues = next as unknown as Record<string, string | undefined>;
 
   for (const key of NOTIFICATION_GROUP_KEYS) {
     const patchedValue = patch[key];
@@ -87,6 +126,14 @@ export function rollbackNotificationPreferencePatch(
     } else {
       next[key] = previousValue;
     }
+  }
+
+  for (const key of DELIVERY_PREFERENCE_KEYS) {
+    const patchedValue = patchValues[key];
+    if (patchedValue === undefined || currentValues[key] !== patchedValue) continue;
+    const previousValue = previousValues[key];
+    if (previousValue === undefined) delete nextValues[key];
+    else nextValues[key] = previousValue;
   }
 
   return next;
