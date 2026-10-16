@@ -2468,10 +2468,12 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.GetNotificationPreferences)
 				r.Patch("/", h.PatchNotificationPreferences)
 				r.Put("/", h.UpdateNotificationPreferences)
+				r.Post("/daily-report", h.CreateDailyReportNow)
 			})
 		})
 	})
 
+	h.NotificationDelivery = service.NewNotificationDeliveryService(h.Queries, pool, h.IssueService, emailSvc, channelRegistry)
 	return r, h
 }
 

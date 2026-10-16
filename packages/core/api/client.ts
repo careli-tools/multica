@@ -403,6 +403,7 @@ import {
   EMPTY_INBOX_ITEMS,
   NotificationPreferenceResponseSchema,
   EMPTY_NOTIFICATION_PREFERENCE_RESPONSE,
+  CreateNotificationDailyReportResponseSchema,
   LabelSchema,
   ListLabelsResponseSchema,
   ListIssueStatusesResponseSchema,
@@ -2983,6 +2984,18 @@ export class ApiClient {
       NotificationPreferenceResponseSchema,
       EMPTY_NOTIFICATION_PREFERENCE_RESPONSE,
       { endpoint: "PATCH /api/notification-preferences" },
+    );
+  }
+
+  async createNotificationDailyReportNow(): Promise<{ accepted: boolean; report_date: string; issue_id: string }> {
+    const raw = await this.fetch<unknown>("/api/notification-preferences/daily-report", {
+      method: "POST",
+    });
+    return parseWithFallback(
+      raw,
+      CreateNotificationDailyReportResponseSchema,
+      { accepted: false, report_date: "", issue_id: "" },
+      { endpoint: "POST /api/notification-preferences/daily-report" },
     );
   }
 

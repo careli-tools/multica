@@ -224,6 +224,7 @@ type Handler struct {
 	SeatCapacityLocker    seatcapacity.WorkspaceLocker
 	SeatCapacityWorker    *seatcapacity.Worker
 	EmailService          *service.EmailService
+	NotificationDelivery  *service.NotificationDeliveryService
 	UpdateStore           UpdateStore
 	ModelListStore        ModelListStore
 	LocalSkillListStore   LocalSkillListStore
