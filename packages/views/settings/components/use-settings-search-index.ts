@@ -106,6 +106,30 @@ export function useSettingsSearchIndex(
         title: t(($) => $.notifications.browser.label),
       },
       {
+        tab: "notifications",
+        anchor: "email",
+        title: t(($) => $.notifications.delivery.email),
+        description: t(($) => $.notifications.delivery.email_description),
+      },
+      {
+        tab: "notifications",
+        anchor: "telegram",
+        title: t(($) => $.notifications.delivery.telegram),
+        description: t(($) => $.notifications.delivery.telegram_unconnected),
+      },
+      {
+        tab: "notifications",
+        anchor: "digest",
+        title: t(($) => $.notifications.delivery.digest),
+        description: t(($) => $.notifications.delivery.digest_description),
+      },
+      {
+        tab: "notifications",
+        anchor: "daily-report",
+        title: t(($) => $.notifications.daily_report.title),
+        description: t(($) => $.notifications.daily_report.description),
+      },
+      {
         tab: "tokens",
         title: t(($) => $.page.tabs.tokens),
         description: t(($) => $.tokens.purpose),
