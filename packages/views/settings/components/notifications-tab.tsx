@@ -219,6 +219,7 @@ export function NotificationsTab() {
               type="email"
               autoComplete="email"
               value={emailAddress}
+              // eslint-disable-next-line no-restricted-syntax -- example address format, not prose
               placeholder="name@example.com"
               onChange={(event) => setEmailAddress(event.target.value)}
               onBlur={() => {
