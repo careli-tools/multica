@@ -15,7 +15,7 @@ const compareAndSwapProjectContext = `-- name: CompareAndSwapProjectContext :one
 UPDATE project SET description = $1::text, updated_at = now()
 WHERE id = $2::uuid AND workspace_id = $3::uuid
   AND COALESCE(description, '') = $4::text
-RETURNING id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date
+RETURNING id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id
 `
 
 type CompareAndSwapProjectContextParams struct {
@@ -47,6 +47,7 @@ func (q *Queries) CompareAndSwapProjectContext(ctx context.Context, arg CompareA
 		&i.Priority,
 		&i.StartDate,
 		&i.DueDate,
+		&i.WorkflowID,
 	)
 	return i, err
 }
