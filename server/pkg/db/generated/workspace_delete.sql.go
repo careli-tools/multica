@@ -349,6 +349,12 @@ deleted_activity AS (
 deleted_inbox AS (
     DELETE FROM inbox_item WHERE workspace_id = $1
 ),
+deleted_notification_deliveries AS (
+    DELETE FROM notification_delivery_outbox WHERE workspace_id = $1
+),
+deleted_notification_daily_report_runs AS (
+    DELETE FROM notification_daily_report_run WHERE workspace_id = $1
+),
 deleted_issue_dependencies AS (
     DELETE FROM issue_dependency
     WHERE issue_id IN (SELECT id FROM ws_issues)
