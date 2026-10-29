@@ -412,6 +412,7 @@ import {
   EMPTY_INBOX_ITEMS,
   NotificationPreferenceResponseSchema,
   EMPTY_NOTIFICATION_PREFERENCE_RESPONSE,
+  CreateNotificationDailyReportResponseSchema,
   LabelSchema,
   ListLabelsResponseSchema,
   ListIssueStatusesResponseSchema,
@@ -3051,6 +3052,18 @@ export class ApiClient {
     );
   }
 
+  async createNotificationDailyReportNow(): Promise<{ accepted: boolean; report_date: string; issue_id: string }> {
+    const raw = await this.fetch<unknown>("/api/notification-preferences/daily-report", {
+      method: "POST",
+    });
+    return parseWithFallback(
+      raw,
+      CreateNotificationDailyReportResponseSchema,
+      { accepted: false, report_date: "", issue_id: "" },
+      { endpoint: "POST /api/notification-preferences/daily-report" },
+    );
+  }
+
   // App Config
   async getConfig(): Promise<AppConfigResponse> {
     const raw = await this.fetch<unknown>("/api/config");
@@ -3317,11 +3330,11 @@ export class ApiClient {
    */
   async callPluginAction(
     installationId: string,
-    request: { method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; path: string; body?: unknown; issueId?: string },
+    request: { method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; path: string; body?: unknown; issueId?: string; projectId?: string },
   ): Promise<unknown> {
-    const query = request.path === "/context" && request.issueId
+    const query = request.path !== "/context" ? "" : request.issueId
       ? `?issue_id=${encodeURIComponent(request.issueId)}`
-      : "";
+      : request.projectId ? `?project_id=${encodeURIComponent(request.projectId)}` : "";
     return this.fetch<unknown>(`/api/plugin-bridge/v1${request.path}${query}`, {
       method: request.method,
       headers: { "X-Multica-Plugin-Installation": installationId },

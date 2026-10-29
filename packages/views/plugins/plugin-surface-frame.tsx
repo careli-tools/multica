@@ -16,6 +16,7 @@ interface PluginSurfaceFrameProps {
   installation: PluginInstallation;
   surface: PluginSurface;
   issueId?: string;
+  projectId?: string;
   className?: string;
 }
 
@@ -26,7 +27,7 @@ interface PluginSurfaceFrameProps {
  * boundary and is always `sandbox="allow-scripts"` without
  * `allow-same-origin`; see buildSurfaceFrameDocument.
  */
-export function PluginSurfaceFrame({ wsId, installation, surface, issueId, className }: PluginSurfaceFrameProps) {
+export function PluginSurfaceFrame({ wsId, installation, surface, issueId, projectId, className }: PluginSurfaceFrameProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
@@ -35,7 +36,7 @@ export function PluginSurfaceFrame({ wsId, installation, surface, issueId, class
   // Every mounted frame gets its own launch. The artifact is immutable, but the
   // bridge proof is deliberately neither cacheable nor shareable.
   const { data: launch, isPending, isError } = useQuery(
-    pluginSurfaceLaunchOptions(wsId, installation.id, surface.key, installation.package_version_id, launchInstance, issueId),
+    pluginSurfaceLaunchOptions(wsId, installation.id, surface.key, installation.package_version_id, launchInstance, issueId ?? projectId),
   );
 
   const surfaceDocument = useMemo(() => {
@@ -50,7 +51,7 @@ export function PluginSurfaceFrame({ wsId, installation, surface, issueId, class
   // Terminal state belongs to one rendered document on one issue. Comparing
   // the instance keeps an old failure/navigation from surviving a replacement
   // launch even though the new iframe is running normally.
-  const surfaceInstance = useMemo(() => ({ issueId, surfaceDocument }), [issueId, surfaceDocument]);
+  const surfaceInstance = useMemo(() => ({ issueId, projectId, surfaceDocument }), [issueId, projectId, surfaceDocument]);
   const [failedSurfaceInstance, setFailedSurfaceInstance] = useState<typeof surfaceInstance | null>(null);
   const [navigatedSurfaceInstance, setNavigatedSurfaceInstance] = useState<typeof surfaceInstance | null>(null);
   const failed = failedSurfaceInstance === surfaceInstance;
@@ -65,9 +66,10 @@ export function PluginSurfaceFrame({ wsId, installation, surface, issueId, class
       installationId: installation.id,
       bridgeToken: launch?.bridge_token ?? "",
       issueId,
+      projectId,
       onResize: setHeight,
     }),
-    [installation.id, launch?.bridge_token, issueId],
+    [installation.id, launch?.bridge_token, issueId, projectId],
   );
 
   // The listener is armed BEFORE srcdoc is assigned. That makes the guest-first
@@ -134,7 +136,7 @@ export function PluginSurfaceFrame({ wsId, installation, surface, issueId, class
         // Keyed on the issue as well: a new bridge is created when issueId
         // changes, but an unchanged document would not reload, and the guest
         // stops announcing once answered — the fresh bridge would wait forever.
-        key={`${installation.id}:${surface.key}:${issueId ?? ""}`}
+        key={`${installation.id}:${surface.key}:${issueId ?? ""}:${projectId ?? ""}`}
         ref={frameRef}
         title={`${installation.name} — ${surface.name}`}
         // This is the host-authored wrapper, so same-origin is intentional. Its

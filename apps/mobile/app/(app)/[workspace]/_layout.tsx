@@ -342,6 +342,10 @@ export default function WorkspaceLayout() {
             }}
         />
         <Stack.Screen
+          name="more/settings/notifications-agent"
+          options={SHEET_OPTIONS}
+        />
+        <Stack.Screen
           name="new-issue"
           options={{
             title: t("navigation:routes.new_issue"),

@@ -571,6 +571,10 @@ export async function handleInboxNew(
   // A new item in ANY workspace can light the workspace-switcher dot, so
   // refresh the cross-workspace summary regardless of the active workspace.
   void onInboxSummaryInvalidate(qc);
+  // Completed runs and daily reports remain available in the Inbox and the
+  // scheduled digest; firing a separate desktop banner for each would undo
+  // the batching preference that keeps routine activity quiet.
+  if (item.type === "task_completed" || item.type === "daily_report") return;
   // Fire a native OS notification only when the app isn't focused. When
   // the user is already looking at Multica, the inbox sidebar's unread
   // styling is enough — no need to interrupt with a banner. `desktopAPI`

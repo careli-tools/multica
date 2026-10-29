@@ -33,7 +33,11 @@ type PluginActionCaller struct {
 	// whole five minutes it lives. Zero means unrestricted — a session caller,
 	// or an invocation that had no issue — and the ordinary workspace and
 	// membership checks still apply on top.
-	IssueScope pgtype.UUID
+	IssueScope   pgtype.UUID
+	ProjectScope pgtype.UUID
+	// CallbackTrigger is the trigger of the hook a callback token was issued
+	// for; empty for session and install-token callers.
+	CallbackTrigger string
 }
 
 // AuthorizePluginAction performs the two checks that belong to the plugin: the
