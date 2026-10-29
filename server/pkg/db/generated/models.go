@@ -1224,6 +1224,38 @@ type MemberDelegationDay struct {
 	ActivityDate pgtype.Date `json:"activity_date"`
 }
 
+type NotificationDailyReportRun struct {
+	ID           pgtype.UUID        `json:"id"`
+	WorkspaceID  pgtype.UUID        `json:"workspace_id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	ReportDate   pgtype.Date        `json:"report_date"`
+	AgentID      pgtype.UUID        `json:"agent_id"`
+	IssueID      pgtype.UUID        `json:"issue_id"`
+	Status       string             `json:"status"`
+	IsManual     bool               `json:"is_manual"`
+	Format       string             `json:"format"`
+	Instructions string             `json:"instructions"`
+	ReportBody   string             `json:"report_body"`
+	ErrorCode    string             `json:"error_code"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type NotificationDeliveryOutbox struct {
+	ID            pgtype.UUID        `json:"id"`
+	InboxItemID   pgtype.UUID        `json:"inbox_item_id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	RecipientID   pgtype.UUID        `json:"recipient_id"`
+	ChannelType   string             `json:"channel_type"`
+	Status        string             `json:"status"`
+	AvailableAt   pgtype.Timestamptz `json:"available_at"`
+	Attempts      int32              `json:"attempts"`
+	LastErrorCode string             `json:"last_error_code"`
+	SentAt        pgtype.Timestamptz `json:"sent_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type NotificationPreference struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`

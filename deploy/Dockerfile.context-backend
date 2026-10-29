@@ -1,0 +1,7 @@
+# Build server/bin/server and server/bin/migrate from the merged careli/v0.7.1 branch first.
+FROM ghcr.io/multica-ai/multica-backend:v0.7.1
+ARG COMMIT
+LABEL org.opencontainers.image.revision=$COMMIT
+COPY server/bin/server /app/server
+COPY server/bin/migrate /app/migrate
+COPY server/migrations/ /app/migrations/

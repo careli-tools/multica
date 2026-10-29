@@ -319,19 +319,20 @@ func TestExamplePluginHooksReachAnAgentAsTools(t *testing.T) {
 // plugin's own server sees that signature and answers, and the answer comes
 // back. Nothing is mocked except the author's business logic, which is theirs.
 func TestExamplePluginAgentHookRoundTripIsSigned(t *testing.T) {
-	var seenSignature, seenTimestamp, seenHook, seenTrigger string
+	var seenSignature, seenTimestamp, seenHook, seenTrigger, seenProject string
 	var seenConfig map[string]any
 
 	sentinel := quietServer(t, func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
-			HookKey string         `json:"hook_key"`
-			Trigger string         `json:"trigger"`
-			Config  map[string]any `json:"config"`
+			HookKey   string         `json:"hook_key"`
+			Trigger   string         `json:"trigger"`
+			ProjectID string         `json:"project_id"`
+			Config    map[string]any `json:"config"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		seenSignature = r.Header.Get("X-Multica-Signature")
 		seenTimestamp = r.Header.Get("X-Multica-Timestamp")
-		seenHook, seenTrigger, seenConfig = payload.HookKey, payload.Trigger, payload.Config
+		seenHook, seenTrigger, seenConfig, seenProject = payload.HookKey, payload.Trigger, payload.Config, payload.ProjectID
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"deploy_count":1,"summary":"1 deploy to %vcheckout-api"}`, payload.Config["service_prefix"])
@@ -342,8 +343,10 @@ func TestExamplePluginAgentHookRoundTripIsSigned(t *testing.T) {
 	configureExamplePlugin(t, installationID)
 
 	input := json.RawMessage(`{"service":"checkout-api","window_minutes":120}`)
+	project := dbfx.Project(t, "Agent hook task project")
 	result, err := testHandler.PluginService.InvokeAgentHook(
-		context.Background(), installationID, "correlate_deploys", parseUUID(testUserID), input)
+		context.Background(), installationID, "correlate_deploys", parseUUID(testUserID),
+		service.AgentHookScope{ProjectID: parseUUID(project)}, input)
 	if err != nil {
 		t.Fatalf("agent hook invocation: %v", err)
 	}
@@ -353,6 +356,11 @@ func TestExamplePluginAgentHookRoundTripIsSigned(t *testing.T) {
 	}
 	if seenSignature == "" || seenTimestamp == "" {
 		t.Fatal("the request reached the plugin unsigned")
+	}
+	// The task's project travels in the signed body, host-resolved, so a plugin
+	// can tell what the agent's task is about without trusting the model.
+	if seenProject != project {
+		t.Fatalf("the plugin saw project_id=%q, want the task's project %q", seenProject, project)
 	}
 	// The plugin's configuration travels with the call — its business rules
 	// depend on it, and it must not have to keep a second copy.

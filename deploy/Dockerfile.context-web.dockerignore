@@ -1,0 +1,12 @@
+**
+!apps/
+!apps/web/
+!apps/web/.next/
+!apps/web/.next/standalone/
+!apps/web/.next/standalone/**
+!apps/web/.next/static/
+!apps/web/.next/static/**
+!apps/web/public/
+!apps/web/public/**
+!LICENSE
+!NOTICE

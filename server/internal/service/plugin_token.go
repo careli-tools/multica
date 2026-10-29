@@ -139,6 +139,7 @@ type CallbackGrant struct {
 	// IssueID narrows an event callback to the issue that produced it. Zero
 	// when the invocation had no issue.
 	IssueID   pgtype.UUID
+	ProjectID pgtype.UUID
 	ExpiresAt time.Time
 }
 
@@ -187,6 +188,7 @@ func (c *CallbackTokens) Issue(ctx context.Context, invocation HookInvocation) (
 		Trigger:        invocation.Trigger,
 		Actor:          invocation.Actor,
 		IssueID:        invocation.IssueID,
+		ProjectID:      invocation.ProjectID,
 		ExpiresAt:      time.Now().Add(callbackTokenTTL),
 	}
 

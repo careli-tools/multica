@@ -17,6 +17,15 @@ func TestMigrationNumericPrefixesAreUnique(t *testing.T) {
 	// From 129 onward, keep the numeric sequence unique so release tooling and
 	// operators can identify one schema change unambiguously by its number.
 	const firstUniqueMigrationNumber = 129
+	// Careli fork: these stems shipped on careli/v0.6.0 before upstream used
+	// 564-566 and are recorded under these exact names in production
+	// schema_migrations. Renaming them would re-run the DDL, so they keep
+	// their prefixes alongside upstream's.
+	careliForkStems := map[string]bool{
+		"564_notification_delivery":               true,
+		"565_notification_delivery_claim_index":   true,
+		"566_notification_daily_report_due_index": true,
+	}
 	stemByNumber := make(map[int]string)
 	for _, file := range files {
 		stem, _, ok := splitMigrationFilename(filepath.Base(file))
@@ -28,7 +37,7 @@ func TestMigrationNumericPrefixesAreUnique(t *testing.T) {
 			continue
 		}
 		number, err := strconv.Atoi(prefix)
-		if err != nil || number < firstUniqueMigrationNumber {
+		if err != nil || number < firstUniqueMigrationNumber || careliForkStems[stem] {
 			continue
 		}
 		if previous, exists := stemByNumber[number]; exists {
