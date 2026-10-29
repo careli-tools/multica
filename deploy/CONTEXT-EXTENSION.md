@@ -1,7 +1,7 @@
 # Careli Plugin Context Extension (CA-431)
 
 Maintenance base: upstream v0.7.1 (`aec9b0b1699939a6d993da9ca2ebd2c62900a8e0`).
-Merge target: `careli/v0.7.1`. `careli/v0.6.0` remains the rollback source; the older fork main is not the running production source.
+Merge target: `careli/v0.7.1`. `careli/v0.7.0` remains the rollback source; the older fork main is not the running production source.
 
 Adds project_panel and workspace_panel to shared web/desktop views, a project mount bound by the host bridge and signed hook, and scoped context reads/writes. Project callbacks cannot access other projects or workspace context. New write endpoints accept human members only; workspace writes additionally require owner/admin. Atomic expected_content comparison returns 409 on stale input. Successful writes publish the normal project/workspace event with via_plugin_id.
 
@@ -27,11 +27,11 @@ Then use deploy/Dockerfile.context-backend and deploy/Dockerfile.context-web wit
 
 Migrations: the Careli migrations 564–566 (`564_notification_delivery`, `565_notification_delivery_claim_index`, `566_notification_daily_report_due_index`) share numeric prefixes with upstream 564–566. The runner keys on the full file stem, so both sets apply; production already records the Careli stems, so they must never be renamed. New Careli migrations must use a number above the newest upstream migration of the base release and be rechecked on each port.
 
-Compose: set `MULTICA_IMAGE_TAG=v0.7.1`, keep `MULTICA_BACKEND_IMAGE=careli/multica-backend-context` and `MULTICA_WEB_IMAGE=careli/multica-web-context`. Tag the build `v0.7.1-careli.N` and the Compose alias `v0.7.1`; keep the `v0.6.0` aliases as rollback. Keep `MULTICA_SERVER_PINNED=1`, enforced by the dashboard worker before any server update. Future upstream updates require porting and checking this Careli extension first.
+Compose: set `MULTICA_IMAGE_TAG=v0.7.1`, keep `MULTICA_BACKEND_IMAGE=careli/multica-backend-context` and `MULTICA_WEB_IMAGE=careli/multica-web-context`. Tag the build `v0.7.1-careli.N` and the Compose alias `v0.7.1`; keep the `v0.7.0` aliases as rollback. Keep `MULTICA_SERVER_PINNED=1`, enforced by the dashboard worker before any server update. Future upstream updates require porting and checking this Careli extension first.
 
 Cutover: take a PostgreSQL backup and record previous image IDs, then recreate backend/frontend only via `/usr/local/bin/multica-compose up -d --no-deps backend frontend`. Do not restart PostgreSQL. Verify the upstream migrations through 594, `/health`, frontend readiness, plugin panels and notification delivery.
 
-Rollback: do not rely on down migrations for the upstream v0.7.0 schema changes. Restore the pre-cutover dump into the stopped stack, set `MULTICA_IMAGE_TAG=v0.6.0` (aliases built from `careli/v0.6.0`), and recreate backend/frontend. Do not use `migrate down`, which would reverse every migration in this repository.
+Rollback: do not rely on down migrations for the upstream v0.7.1 schema changes. Restore the pre-cutover dump into the stopped stack, set `MULTICA_IMAGE_TAG=v0.7.0` (aliases built from `careli/v0.7.0`), and recreate backend/frontend. Do not use `migrate down`, which would reverse every migration in this repository.
 
 ## Test environment caveat
 
