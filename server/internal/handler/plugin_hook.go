@@ -23,9 +23,10 @@ type invokePluginHookRequest struct {
 	// Trigger is which declared call site this is. The client says which one it
 	// is using, and the server checks the manifest declared it — a client
 	// cannot invent a trigger to reach a hook that never offered it.
-	Trigger string          `json:"trigger"`
-	IssueID string          `json:"issue_id,omitempty"`
-	Input   json.RawMessage `json:"input,omitempty"`
+	Trigger   string          `json:"trigger"`
+	IssueID   string          `json:"issue_id,omitempty"`
+	ProjectID string          `json:"project_id,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
 }
 
 // InvokePluginHook — POST /api/plugin-bridge/v1/hooks/{key}
@@ -73,6 +74,17 @@ func (h *Handler) InvokePluginHook(w http.ResponseWriter, r *http.Request) {
 		// token land as theirs, marked with via_plugin_id.
 		Actor: service.HookActor{Type: "member", ID: actor.Member.UserID},
 		Input: rawOrNil(req.Input),
+	}
+	if req.IssueID != "" && req.ProjectID != "" {
+		writeError(w, http.StatusBadRequest, "choose issue or project")
+		return
+	}
+	if req.ProjectID != "" {
+		project, ok := h.pluginProjectForUser(w, r, caller, req.ProjectID)
+		if !ok {
+			return
+		}
+		invocation.ProjectID = project.ID
 	}
 	if req.IssueID != "" {
 		issue, ok := h.pluginIssueForUser(w, r, caller, req.IssueID)

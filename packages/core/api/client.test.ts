@@ -900,6 +900,8 @@ describe("ApiClient notification preferences", () => {
     await expect(client.getNotificationPreferences()).resolves.toEqual({
       workspace_id: "",
       preferences: {},
+      telegram_connected: false,
+      delivery_status: {},
     });
   });
 });

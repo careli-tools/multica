@@ -7,6 +7,12 @@ import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider, type NavigationAdapter } from "../../navigation";
 import { ProjectDetail } from "./project-detail";
 
+vi.mock("../../plugins/plugin-panel-section", () => ({
+  PluginPanelSection: ({ type, projectId }: { type: string; projectId?: string }) => (
+    <div data-testid="plugin-context-mount" data-type={type} data-project={projectId} />
+  ),
+}));
+
 const mocks = vi.hoisted(() => ({
   role: "admin",
   copyText: vi.fn(),
