@@ -279,6 +279,7 @@ The daemon auto-detects these AI CLIs on your PATH:
 | [Codex](https://github.com/openai/codex) | `codex` | OpenAI's coding agent |
 | [GitHub Copilot CLI](https://docs.github.com/en/copilot) | `copilot` | GitHub's coding agent (model routed by your GitHub entitlement) |
 | OpenCode | `opencode` | Open-source coding agent |
+| [ZCode](https://zcode.z.ai/) | `zcode` / ZCode Desktop | Native NDJSON app-server, sessions, model discovery, thinking levels, MCP and yolo execution |
 | OpenClaw | `openclaw` | Open-source coding agent |
 | Hermes | `hermes` | Nous Research coding agent |
 | [Pi](https://pi.dev/) | `pi` | Pi coding agent |
@@ -741,6 +742,13 @@ multica issue comment add <issue-id> --content "Looks good, merging now"
 
 # Reply to a specific comment
 multica issue comment add <issue-id> --parent <comment-id> --content "Thanks!"
+
+# Add the comment to an agent's running turn instead of queueing a
+# follow-up run (--steer is repeatable; --steer-active picks every running
+# agent you may steer). You may steer an agent exactly when your comment could
+# start it; an agent never steers itself and adds at most 3 messages to one
+# run. Prints per run whether it was steered.
+multica issue comment add <issue-id> --content-file note.md --steer <run-id>
 
 # Delete a comment
 multica issue comment delete <comment-id>
