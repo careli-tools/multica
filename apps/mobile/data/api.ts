@@ -105,6 +105,7 @@ import {
   EMPTY_LIST_PROJECTS_RESPONSE,
   EMPTY_MEMBER_LIST,
   EMPTY_NOTIFICATION_PREFERENCES,
+  EMPTY_CREATE_NOTIFICATION_DAILY_REPORT_RESPONSE,
   EMPTY_PIN_LIST,
   EMPTY_PROJECT,
   EMPTY_RUNTIME_LIST,
@@ -116,6 +117,7 @@ import {
   InboxListSchema,
   InboxUnreadSummarySchema,
   NotificationPreferenceResponseSchema,
+  CreateNotificationDailyReportResponseSchema,
   ListLabelsResponseSchema,
   ListProjectResourcesResponseSchema,
   ListProjectsResponseSchema,
@@ -484,6 +486,16 @@ class ApiClient {
         body: JSON.stringify({ preferences }),
       },
       { endpoint: "updateNotificationPreferences" },
+    );
+  }
+
+  async createNotificationDailyReportNow(): Promise<{ accepted: boolean; report_date: string; issue_id: string }> {
+    return this.fetchValidatedWith(
+      "/api/notification-preferences/daily-report",
+      CreateNotificationDailyReportResponseSchema,
+      EMPTY_CREATE_NOTIFICATION_DAILY_REPORT_RESPONSE,
+      { method: "POST" },
+      { endpoint: "createNotificationDailyReportNow" },
     );
   }
 

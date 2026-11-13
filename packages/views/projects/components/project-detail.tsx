@@ -1,5 +1,7 @@
 "use client";
 
+import { PluginPanelSection } from "../../plugins/plugin-panel-section";
+
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useRegisterCommandBarContext } from "../../search/register-context";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
@@ -541,6 +543,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </p>
         </div>}
       </div>
+
+      <PluginPanelSection type="project_panel" projectId={projectId} />
 
       {/* Resources */}
       <ProjectResourcesSection projectId={projectId} />
