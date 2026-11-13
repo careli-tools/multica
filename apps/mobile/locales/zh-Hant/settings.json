@@ -85,5 +85,57 @@
     "chat_replies": "包含聊天回覆"
   },
   "groups.assignments_description": "任務分配給我或取消分配給我時。",
-  "groups.mentions_description": "有人用 @ 提到你時，包括 @all 和 @squad。"
+  "groups.mentions_description": "有人用 @ 提到你時，包括 @all 和 @squad。",
+  "delivery": {
+    "title": "電子郵件與 Telegram",
+    "description": "更新會合併成一則訊息；需要處理的項目會立即傳送。",
+    "email": "電子郵件通知",
+    "email_description": "以摘要傳送事件脈絡與相關內容。",
+    "email_address": "收件電子郵件地址",
+    "telegram": "Telegram 通知",
+    "telegram_connected": "此工作區已連結 Telegram 帳號。",
+    "telegram_unconnected": "請先傳訊息給工作區的 Telegram 機器人以連結帳號。",
+    "delivery_failed": "部分近期訊息無法送達。請檢查電子郵件地址或頻道連線。",
+    "digest": "摘要頻率",
+    "digest_description": "一般更新的合併頻率。",
+    "every_15_minutes": "每 15 分鐘",
+    "every_30_minutes": "每 30 分鐘",
+    "every_hour": "每小時",
+    "every_4_hours": "每 4 小時",
+    "events": {
+      "title": "電子郵件與 Telegram 的事件",
+      "description": "這些篩選不會改變 Multica 收件匣顯示的內容。",
+      "assigned": "指派",
+      "mentioned": "直接提及",
+      "mention_all": "@all 提及",
+      "status_changed": "狀態變更",
+      "task_failed": "代理執行失敗",
+      "task_completed": "代理執行完成"
+    }
+  },
+  "daily_report": {
+    "title": "每日報告",
+    "description": "說明專案脈絡與進度，而非複製活動紀錄。",
+    "enabled": "排程每日報告",
+    "enabled_description": "代理會先閱讀前一天的報告，並依目前專案狀態檢查未完成項目。",
+    "agent": "報告代理",
+    "agent_description": "選擇此工作區中的有效代理。",
+    "choose_agent": "選擇代理",
+    "choose_agent_first": "啟用每日排程前請先選擇代理。",
+    "search_agents": "搜尋代理",
+    "no_agents": "找不到有效的代理。",
+    "time": "報告時間",
+    "time_description": "所選時區的當地時間。",
+    "timezone": "時區（IANA）",
+    "timezone_description": "例如 Europe/Berlin 或 Asia/Shanghai。",
+    "format": "報告樣式",
+    "format_description": "選擇報告結構。",
+    "dev_format": "開發報告 — IT 專案",
+    "standard_format": "標準報告 — 一般工作",
+    "instructions": "給代理的額外指示",
+    "instructions_placeholder": "讀者、重點或術語",
+    "create_now": "立即建立",
+    "queuing": "啟動中…",
+    "queued": "報告已開始，將隨下一份摘要寄出。"
+  }
 }
