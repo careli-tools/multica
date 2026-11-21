@@ -1,0 +1,7 @@
+**
+!server/
+!server/bin/
+!server/bin/server
+!server/bin/migrate
+!server/migrations/
+!server/migrations/**

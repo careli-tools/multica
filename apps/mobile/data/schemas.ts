@@ -123,10 +123,27 @@ export const EMPTY_COMMENT: Comment = {
 export const NotificationPreferenceResponseSchema = z.object({
   workspace_id: z.string().default(""),
   preferences: z.record(z.string(), z.string()).default({}),
+  telegram_connected: z.boolean().optional(),
+  delivery_status: z.record(z.string(), z.object({
+    failed_count: z.number().default(0),
+  }).loose()).optional(),
 }).loose();
 export const EMPTY_NOTIFICATION_PREFERENCES = {
   workspace_id: "",
   preferences: {},
+  telegram_connected: false,
+  delivery_status: {},
+} as const;
+
+export const CreateNotificationDailyReportResponseSchema = z.object({
+  accepted: z.boolean(),
+  report_date: z.string(),
+  issue_id: z.string(),
+}).loose();
+export const EMPTY_CREATE_NOTIFICATION_DAILY_REPORT_RESPONSE = {
+  accepted: false,
+  report_date: "",
+  issue_id: "",
 } as const;
 
 const LabelSchema = z.object({

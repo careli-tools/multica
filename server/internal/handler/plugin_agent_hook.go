@@ -1,10 +1,15 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/multica-ai/multica/server/internal/service"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // The daemon's end of the agent trigger.
@@ -54,8 +59,21 @@ func (h *Handler) InvokeAgentPluginHook(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Bind the call to what the task is about. The model picks the tool input,
+	// so without this the plugin's callback token reaches whatever the model
+	// names. Failing to resolve the scope is a tool error, not an unscoped call.
+	scope, err := h.agentHookScope(r.Context(), task, workspaceID)
+	if err != nil {
+		slog.Warn("resolve agent hook scope failed", "task_id", uuidToString(task.ID), "error", err)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "failed",
+			"error":  "the task's scope could not be resolved; try again",
+		})
+		return
+	}
+
 	result, err := h.PluginService.InvokeAgentHook(
-		r.Context(), uuidToString(installation.ID), req.HookKey, task.AgentID, req.Input)
+		r.Context(), uuidToString(installation.ID), req.HookKey, task.AgentID, scope, req.Input)
 	if err != nil {
 		// 200 with an error body, deliberately.
 		//
@@ -71,4 +89,24 @@ func (h *Handler) InvokeAgentPluginHook(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// agentHookScope narrows an agent hook to the task's own issue or project; see
+// service.AgentHookScope. A task without an issue (chat, autopilot) has nothing
+// to narrow to and stays unscoped, as it was before the scope existed.
+func (h *Handler) agentHookScope(ctx context.Context, task db.AgentTaskQueue, workspaceID string) (service.AgentHookScope, error) {
+	if !task.IssueID.Valid {
+		return service.AgentHookScope{}, nil
+	}
+	issue, err := h.Queries.GetIssue(ctx, task.IssueID)
+	if err != nil {
+		return service.AgentHookScope{}, err
+	}
+	if uuidToString(issue.WorkspaceID) != workspaceID {
+		return service.AgentHookScope{}, errors.New("task issue is outside the task workspace")
+	}
+	if issue.ProjectID.Valid {
+		return service.AgentHookScope{ProjectID: issue.ProjectID}, nil
+	}
+	return service.AgentHookScope{IssueID: issue.ID}, nil
 }
