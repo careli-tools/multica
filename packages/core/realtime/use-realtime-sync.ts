@@ -599,6 +599,10 @@ export async function handleInboxNew(
   // up), the same exception the server's delegated-handoff rule makes. The
   // row still lands in the inbox; it just doesn't interrupt with a banner.
   if (item.type === "status_changed" && item.details?.to === "in_progress") return;
+  // Completed runs and daily reports remain available in the Inbox and the
+  // scheduled digest; firing a separate desktop banner for each would undo
+  // the batching preference that keeps routine activity quiet.
+  if (item.type === "task_completed" || item.type === "daily_report") return;
   // Fire a native OS notification only when the app isn't focused. When
   // the user is already looking at Multica, the inbox sidebar's unread
   // styling is enough — no need to interrupt with a banner. `desktopAPI`
