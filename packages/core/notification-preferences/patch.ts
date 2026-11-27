@@ -1,7 +1,29 @@
 import type { NotificationPreferences } from "../types";
 
-type PreferenceKey = keyof NotificationPreferences;
-type PreferenceValues = Record<PreferenceKey, string | undefined>;
+// Careli: channel and daily-report settings share the preference object but
+// are plain values without a default, so they are diffed and applied as-is.
+const DELIVERY_PREFERENCE_KEYS = [
+  "email_enabled",
+  "email_address",
+  "telegram_enabled",
+  "digest_minutes",
+  "daily_report_enabled",
+  "daily_report_time",
+  "daily_report_timezone",
+  "daily_report_agent_id",
+  "daily_report_format",
+  "daily_report_instructions",
+  "channel_event_assigned",
+  "channel_event_mentioned",
+  "channel_event_mention_all",
+  "channel_event_status_changed",
+  "channel_event_task_failed",
+  "channel_event_task_completed",
+] as const;
+
+type DeliveryPreferenceKey = (typeof DELIVERY_PREFERENCE_KEYS)[number];
+type PreferenceKey = Exclude<keyof NotificationPreferences, DeliveryPreferenceKey>;
+type PreferenceValues = Record<string, string | undefined>;
 
 /**
  * The value each key means when it is missing. Every key the settings UI can
@@ -67,12 +89,20 @@ export function deriveNotificationPreferencePatch(
   next: NotificationPreferences,
 ): NotificationPreferences {
   const patch = {} as PreferenceValues;
+  const previousValues = previous as unknown as PreferenceValues;
+  const nextValues = next as unknown as PreferenceValues;
 
   for (const key of PREFERENCE_KEYS) {
     const previousValue = notificationPreferenceValue(previous, key);
     const nextValue = notificationPreferenceValue(next, key);
     if (previousValue !== nextValue) {
       patch[key] = nextValue;
+    }
+  }
+
+  for (const key of DELIVERY_PREFERENCE_KEYS) {
+    if (previousValues[key] !== nextValues[key] && nextValues[key] !== undefined) {
+      patch[key] = nextValues[key];
     }
   }
 
@@ -85,12 +115,19 @@ export function applyNotificationPreferencePatch(
   patch: NotificationPreferences,
 ): NotificationPreferences {
   let next = { ...current };
+  const patchValues = patch as unknown as PreferenceValues;
 
   for (const key of PREFERENCE_KEYS) {
     const value = patch[key];
     if (value !== undefined) {
       next = withValue(next, key, value);
     }
+  }
+
+  const nextValues = next as unknown as PreferenceValues;
+  for (const key of DELIVERY_PREFERENCE_KEYS) {
+    const value = patchValues[key];
+    if (value !== undefined) nextValues[key] = value;
   }
 
   return next;
@@ -106,6 +143,9 @@ export function rollbackNotificationPreferencePatch(
   previous: NotificationPreferences,
 ): NotificationPreferences {
   let next = { ...current };
+  const currentValues = current as unknown as PreferenceValues;
+  const patchValues = patch as unknown as PreferenceValues;
+  const previousValues = previous as unknown as PreferenceValues;
 
   for (const key of PREFERENCE_KEYS) {
     const patchedValue = patch[key];
@@ -116,6 +156,15 @@ export function rollbackNotificationPreferencePatch(
       continue;
     }
     next = withValue(next, key, notificationPreferenceValue(previous, key));
+  }
+
+  const nextValues = next as unknown as PreferenceValues;
+  for (const key of DELIVERY_PREFERENCE_KEYS) {
+    const patchedValue = patchValues[key];
+    if (patchedValue === undefined || currentValues[key] !== patchedValue) continue;
+    const previousValue = previousValues[key];
+    if (previousValue === undefined) delete nextValues[key];
+    else nextValues[key] = previousValue;
   }
 
   return next;

@@ -127,6 +127,11 @@ func logSecretboxGateDisabled(label, envVar string, err error) {
 }
 
 func registerPluginActionRoutes(r chi.Router, h *handler.Handler) {
+	r.Get(publicapiv1.PathProjectContext, h.GetPluginProjectContext)
+	r.Patch(publicapiv1.PathProjectContext, h.PatchPluginProjectContext)
+	r.Get(publicapiv1.PathWorkspaceContext, h.GetPluginWorkspaceContext)
+	r.Patch(publicapiv1.PathWorkspaceContext, h.PatchPluginWorkspaceContext)
+	r.Get(publicapiv1.PathProjectIssues, h.ListPluginProjectIssues)
 	r.Get(publicapiv1.PathContext, h.GetPluginContext)
 	r.Get(publicapiv1.PathIssue, h.GetPluginIssue)
 	r.Patch(publicapiv1.PathIssue, h.PatchPluginIssue)
@@ -2904,10 +2909,12 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Patch("/", h.PatchNotificationPreferences)
 				r.Put("/", h.UpdateNotificationPreferences)
 				r.Post("/auto-archive-prompt", h.ResolveAutoArchivePrompt)
+				r.Post("/daily-report", h.CreateDailyReportNow)
 			})
 		})
 	})
 
+	h.NotificationDelivery = service.NewNotificationDeliveryService(h.Queries, pool, h.IssueService, emailSvc, channelRegistry)
 	return r, h
 }
 

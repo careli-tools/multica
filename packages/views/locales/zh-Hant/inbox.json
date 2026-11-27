@@ -112,6 +112,7 @@
     "project_owner_joined": "所有者加入了專案",
     "autopilot_quota_exceeded": "自動化執行次數已用完",
     "app_tool_calls_quota_exceeded": "應用呼叫次數已用完",
+    "daily_report": "每日報告",
     "app_action_requested": "等待你確認",
     "app_action_reminder": "確認即將過期",
     "app_connect_requested": "請連線應用",
