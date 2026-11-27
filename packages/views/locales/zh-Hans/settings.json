@@ -985,7 +985,7 @@
       "choose_agent": "选择智能体",
       "choose_agent_first": "启用每日报告前，请先选择智能体。",
       "create_now": "立即生成",
-      "queuing": "正在启动…",
+      "queuing": "正在启动...",
       "queued": "已开始生成每日报告，将随下一封汇总邮件发送。",
       "time": "报告时间",
       "time_description": "使用所选时区的当地时间。",

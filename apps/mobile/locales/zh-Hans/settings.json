@@ -89,7 +89,7 @@
     "instructions": "给智能体的补充要求",
     "instructions_placeholder": "读者、重点或术语偏好",
     "create_now": "立即生成",
-    "queuing": "正在启动…",
+    "queuing": "正在启动...",
     "queued": "已开始生成报告，将随下一封汇总邮件发送。"
   },
   "workspace": {

@@ -995,7 +995,7 @@
       "choose_agent": "Choose an agent",
       "choose_agent_first": "Choose an agent before enabling daily reports.",
       "create_now": "Create now",
-      "queuing": "Starting…",
+      "queuing": "Starting...",
       "queued": "Daily report started. It will arrive with the next digest.",
       "time": "Report time",
       "time_description": "Local time in the selected timezone.",

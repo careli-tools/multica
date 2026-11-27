@@ -89,7 +89,7 @@
     "instructions": "Additional agent instructions",
     "instructions_placeholder": "Audience, focus, or terminology",
     "create_now": "Create now",
-    "queuing": "Starting…",
+    "queuing": "Starting...",
     "queued": "The report has started and will be sent with the next digest."
   },
   "workspace": {
