@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -106,6 +106,14 @@ const CHANNEL_EVENT_DEFAULTS: Record<ChannelEventKey, "true" | "false"> = {
   channel_event_task_completed: "false",
 };
 
+function usePreferenceDraft(saved: string) {
+  const [draft, setDraft] = useState({ saved, value: saved });
+  if (draft.saved !== saved) {
+    setDraft({ saved, value: saved });
+  }
+  return [draft.saved === saved ? draft.value : saved, (value: string) => setDraft({ saved, value })] as const;
+}
+
 export function NotificationsTab() {
   const { t } = useT("settings");
   const wsId = useWorkspaceId();
@@ -127,21 +135,9 @@ export function NotificationsTab() {
   });
 
   const preferences = data?.preferences ?? {};
-  const [emailAddress, setEmailAddress] = useState(preferences.email_address ?? "");
-  const [reportInstructions, setReportInstructions] = useState(
-    preferences.daily_report_instructions ?? "",
-  );
-  const [reportTime, setReportTime] = useState(preferences.daily_report_time ?? "18:00");
-
-  useEffect(() => setEmailAddress(preferences.email_address ?? ""), [preferences.email_address]);
-  useEffect(
-    () => setReportInstructions(preferences.daily_report_instructions ?? ""),
-    [preferences.daily_report_instructions],
-  );
-  useEffect(
-    () => setReportTime(preferences.daily_report_time ?? "18:00"),
-    [preferences.daily_report_time],
-  );
+  const [emailAddress, setEmailAddress] = usePreferenceDraft(preferences.email_address ?? "");
+  const [reportInstructions, setReportInstructions] = usePreferenceDraft(preferences.daily_report_instructions ?? "");
+  const [reportTime, setReportTime] = usePreferenceDraft(preferences.daily_report_time ?? "18:00");
 
   const onSaveError = (err: unknown) =>
     toast.error(

@@ -4,7 +4,7 @@
  * report style, agent instructions, schedule, and manual creation share the
  * same server preference contract.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, TextInput, View } from "react-native";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -81,6 +81,14 @@ const CHANNEL_EVENTS = [
 
 const DIGEST_INTERVALS = ["15", "30", "60", "240"] as const;
 
+function usePreferenceDraft(saved: string) {
+  const [draft, setDraft] = useState({ saved, value: saved });
+  if (draft.saved !== saved) {
+    setDraft({ saved, value: saved });
+  }
+  return [draft.saved === saved ? draft.value : saved, (value: string) => setDraft({ saved, value })] as const;
+}
+
 export default function NotificationsSettingsScreen() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const workspaceSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
@@ -95,14 +103,10 @@ export default function NotificationsSettingsScreen() {
   });
 
   const preferences: NotificationPreferences = data?.preferences ?? {};
-  const [emailAddress, setEmailAddress] = useState(preferences.email_address ?? "");
-  const [reportTime, setReportTime] = useState(preferences.daily_report_time ?? "18:00");
-  const [reportTimezone, setReportTimezone] = useState(preferences.daily_report_timezone ?? "Europe/Berlin");
-  const [reportInstructions, setReportInstructions] = useState(preferences.daily_report_instructions ?? "");
-  useEffect(() => setEmailAddress(preferences.email_address ?? ""), [preferences.email_address]);
-  useEffect(() => setReportTime(preferences.daily_report_time ?? "18:00"), [preferences.daily_report_time]);
-  useEffect(() => setReportTimezone(preferences.daily_report_timezone ?? "Europe/Berlin"), [preferences.daily_report_timezone]);
-  useEffect(() => setReportInstructions(preferences.daily_report_instructions ?? ""), [preferences.daily_report_instructions]);
+  const [emailAddress, setEmailAddress] = usePreferenceDraft(preferences.email_address ?? "");
+  const [reportTime, setReportTime] = usePreferenceDraft(preferences.daily_report_time ?? "18:00");
+  const [reportTimezone, setReportTimezone] = usePreferenceDraft(preferences.daily_report_timezone ?? "Europe/Berlin");
+  const [reportInstructions, setReportInstructions] = usePreferenceDraft(preferences.daily_report_instructions ?? "");
 
   const activeAgents = useMemo(() => agents.filter((agent) => !agent.archived_at), [agents]);
   const reportAgentId = preferences.daily_report_agent_id ?? "";
@@ -199,7 +203,6 @@ export default function NotificationsSettingsScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             value={emailAddress}
-            placeholder="name@example.com"
             onChangeText={setEmailAddress}
             onBlur={() => {
               if (emailAddress !== (preferences.email_address ?? "")) {
@@ -306,7 +309,6 @@ export default function NotificationsSettingsScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             value={reportTimezone}
-            placeholder="Europe/Berlin"
             onChangeText={setReportTimezone}
             onBlur={() => {
               if (reportTimezone !== (preferences.daily_report_timezone ?? "Europe/Berlin")) savePreference("daily_report_timezone", reportTimezone);
