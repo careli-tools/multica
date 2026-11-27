@@ -46,8 +46,11 @@ var typeGroups = map[string]string{
 	"start_date_changed": GroupUpdates,
 	"due_date_changed":   GroupUpdates,
 	"task_failed":        GroupAgentActivity,
-	"app_action_result":  GroupAgentActivity,
-	"issue_created":      GroupNewIssues,
+	// Careli: the agent's result comment when a run completes, for the
+	// outbound digest (notification_listeners.go, task:completed).
+	"task_completed":    GroupAgentActivity,
+	"app_action_result": GroupAgentActivity,
+	"issue_created":     GroupNewIssues,
 
 	"issue_subscribed":         "",
 	"quick_create_done":        "",
@@ -64,6 +67,8 @@ var typeGroups = map[string]string{
 	"app_action_requested":  "",
 	"app_action_reminder":   "",
 	"app_connect_requested": "",
+	// Careli: daily report issues, written by the notification delivery job.
+	"daily_report": "",
 }
 
 // legacyTypes are types earlier releases wrote and this server no longer
@@ -72,7 +77,6 @@ var typeGroups = map[string]string{
 // deleting it.
 var legacyTypes = []string{
 	"review_requested",
-	"task_completed",
 	"agent_blocked",
 	"agent_completed",
 }

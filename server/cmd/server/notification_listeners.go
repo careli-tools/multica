@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/inbox"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
@@ -798,6 +802,16 @@ func notifyMentionedMembers(
 	details []byte,
 ) map[string]bool {
 	notified := map[string]bool{}
+	// Careli delivery: record whether the comment used @all at all, so the
+	// outbound channels can tell broadcast mentions from personal ones.
+	mentionAll := false
+	for _, m := range mentions {
+		if m.Type == "all" {
+			mentionAll = true
+			break
+		}
+	}
+	details = withDetail(details, "mention_all", strconv.FormatBool(mentionAll))
 	// Collect the set of member IDs to notify, each with how the mention
 	// reached them. Naming someone outranks reaching them through @all.
 	recipientIDs := map[string]bool{}
@@ -882,6 +896,9 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 		if !ok {
 			return
 		}
+		if issue.Description != nil && service.IsNotificationDailyReportIssue(*issue.Description) {
+			return
+		}
 
 		// Track who already got notified to avoid duplicates
 		skip := map[string]bool{e.ActorID: true}
@@ -925,6 +942,9 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 		}
 		issue, ok := payload["issue"].(handler.IssueResponse)
 		if !ok {
+			return
+		}
+		if issue.Description != nil && service.IsNotificationDailyReportIssue(*issue.Description) {
 			return
 		}
 		assigneeChanged, _ := payload["assignee_changed"].(bool)
@@ -1169,6 +1189,11 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 		if authorType == "system" {
 			return
 		}
+		if issueID != "" {
+			if issue, err := queries.GetIssue(ctx, parseUUID(issueID)); err == nil && service.IsNotificationDailyReportIssue(issue.Description.String) {
+				return
+			}
+		}
 
 		issueTitle, _ := payload["issue_title"].(string)
 		issueStatus, _ := payload["issue_status"].(string)
@@ -1283,10 +1308,66 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 		)
 	})
 
-	// task:completed — no notification of its own; a squad leader run that
-	// ends its squad's chain delivers the handoff that woke it
+	// task:completed — a squad leader run that ends its squad's chain
+	// delivers the handoff that woke it.
 	bus.Subscribe(protocol.EventTaskCompleted, func(e events.Event) {
 		deliverSquadResult(ctx, queries, bus, e)
+	})
+
+	// task:completed — notify subscribers with the agent's latest result comment
+	// so the outbound digest carries useful content, not only a completion event.
+	bus.Subscribe(protocol.EventTaskCompleted, func(e events.Event) {
+		payload, ok := e.Payload.(map[string]any)
+		if !ok {
+			return
+		}
+		issueID, _ := payload["issue_id"].(string)
+		taskID, _ := payload["task_id"].(string)
+		agentID, _ := payload["agent_id"].(string)
+		if issueID == "" || taskID == "" {
+			return
+		}
+		issue, err := queries.GetIssue(ctx, parseUUID(issueID))
+		if err != nil {
+			slog.Error("task:completed notification: failed to get issue", "issue_id", issueID, "error", err)
+			return
+		}
+		if service.IsNotificationDailyReportIssue(issue.Description.String) {
+			return
+		}
+		task, err := queries.GetAgentTask(ctx, parseUUID(taskID))
+		if err != nil {
+			slog.Warn("task:completed notification: failed to get task", "task_id", taskID, "error", err)
+		}
+		body := "Der Agentenlauf wurde abgeschlossen."
+		if err == nil {
+			comments, commentErr := queries.ListCommentsSinceForIssue(ctx, db.ListCommentsSinceForIssueParams{
+				IssueID: issue.ID, WorkspaceID: issue.WorkspaceID, CreatedAt: task.CreatedAt, Limit: 100,
+			})
+			if commentErr == nil {
+				for i := len(comments) - 1; i >= 0; i-- {
+					if comments[i].AuthorType != "agent" || util.UUIDToString(comments[i].AuthorID) != agentID {
+						continue
+					}
+					if content := strings.TrimSpace(comments[i].Content); content != "" {
+						body = content
+						break
+					}
+				}
+			} else {
+				slog.Warn("task:completed notification: failed to get result comments", "task_id", taskID, "error", commentErr)
+			}
+		}
+		if utf8.RuneCountInString(body) > 2000 {
+			body = string([]rune(body)[:2000]) + "…"
+		}
+		exclude := map[string]bool{}
+		if agentID != "" {
+			exclude[agentID] = true
+		}
+		notifySubscribers(ctx, queries, bus, issueID, issue.Status, e.WorkspaceID,
+			events.Event{Type: e.Type, WorkspaceID: e.WorkspaceID, ActorType: "agent", ActorID: agentID},
+			exclude, "task_completed", "info", issue.Title, body, emptyDetails)
 	})
 
 	// task:failed — notify all subscribers except the agent
@@ -1298,6 +1379,9 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 		agentID, _ := payload["agent_id"].(string)
 		issueID, _ := payload["issue_id"].(string)
 		taskID, _ := payload["task_id"].(string)
+		failureReason, _ := payload["failure_reason"].(string)
+		failureText, _ := payload["error"].(string)
+		retryPending, _ := payload["retry_pending"].(bool)
 		if issueID == "" {
 			return
 		}
@@ -1307,18 +1391,41 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 			slog.Error("task:failed notification: failed to get issue", "issue_id", issueID, "error", err)
 			return
 		}
+		if service.IsNotificationDailyReportIssue(issue.Description.String) {
+			return
+		}
 
 		exclude := map[string]bool{}
 		if agentID != "" {
 			exclude[agentID] = true
 		}
-
+		failureContext := strings.TrimSpace(failureReason)
+		if strings.TrimSpace(failureText) != "" {
+			if failureContext != "" {
+				failureContext += "\n"
+			}
+			failureContext += strings.TrimSpace(failureText)
+		}
+		if retryPending {
+			failureContext = strings.TrimSpace(failureContext + "\nEin automatischer Wiederholungsversuch steht noch aus.")
+		}
+		failureSeverity := "action_required"
+		if retryPending {
+			failureSeverity = "info"
+		}
+		if len([]rune(failureContext)) > 1600 {
+			failureContext = string([]rune(failureContext)[:1600]) + "…"
+		}
+		failureDetails := map[string]string{
+			"failure_reason": failureReason,
+			"retry_pending":  strconv.FormatBool(retryPending),
+		}
 		// The task id lets opening the notification land on the failed run
 		// in the issue's timeline.
-		details := emptyDetails
 		if taskID != "" {
-			details, _ = json.Marshal(map[string]string{"task_id": taskID})
+			failureDetails["task_id"] = taskID
 		}
+		details, _ := json.Marshal(failureDetails)
 
 		notifySubscribers(ctx, queries, bus, issueID, issue.Status, e.WorkspaceID,
 			events.Event{
@@ -1327,8 +1434,8 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 				ActorType:   "agent",
 				ActorID:     agentID,
 			},
-			exclude, "task_failed", "action_required",
-			issue.Title, "",
+			exclude, "task_failed", failureSeverity,
+			issue.Title, failureContext,
 			details)
 	})
 }

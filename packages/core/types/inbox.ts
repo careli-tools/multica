@@ -21,10 +21,13 @@ export type InboxItemType =
   | "doc_mentioned"
   | "task_failed"
   | "reaction_added"
+  // Careli: a completed run's result and the daily report issues written by
+  // the notification delivery job.
+  | "task_completed"
+  | "daily_report"
   // No longer written, but older servers wrote them and those rows remain;
   // keep their labels and filter groups so history still reads and filters.
   | "review_requested"
-  | "task_completed"
   | "agent_blocked"
   | "agent_completed"
   | "quick_create_done"

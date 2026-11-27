@@ -101,8 +101,9 @@ type HookInvocation struct {
 	// IssueID is the issue this call is about, when there is one. It narrows the
 	// callback token so a handler answering about one issue cannot use the same
 	// grant to reach across the workspace.
-	IssueID pgtype.UUID
-	Input   any
+	IssueID   pgtype.UUID
+	ProjectID pgtype.UUID
+	Input     any
 	// DeliveryID is stable across retries of the same scheduled occurrence.
 	// PlannedAt is the canonical UTC cron occurrence, not delivery wall time.
 	DeliveryID string
@@ -128,9 +129,10 @@ type hookRequestBody struct {
 	// by the host. Sent because the alternative is every handler reading it out
 	// of client-supplied `input` — unvalidated, and absent entirely for the event
 	// trigger, where no client was involved at all.
-	IssueID string           `json:"issue_id,omitempty"`
-	Actor   hookRequestActor `json:"actor"`
-	Input   json.RawMessage  `json:"input,omitempty"`
+	IssueID   string           `json:"issue_id,omitempty"`
+	ProjectID string           `json:"project_id,omitempty"`
+	Actor     hookRequestActor `json:"actor"`
+	Input     json.RawMessage  `json:"input,omitempty"`
 	// Config is the installation's non-secret configuration, the values an
 	// administrator typed into the host-rendered form. Sent because the handler
 	// has no other way to read them — the Action API deliberately has no config
@@ -403,6 +405,9 @@ func (s *PluginService) buildHookBody(ctx context.Context, invocation HookInvoca
 	}
 	if invocation.IssueID.Valid {
 		body.IssueID = uuidString(invocation.IssueID)
+	}
+	if invocation.ProjectID.Valid {
+		body.ProjectID = uuidString(invocation.ProjectID)
 	}
 	body.Config = nonSecretConfig(invocation.Installation)
 	if invocation.Input != nil {

@@ -7,6 +7,7 @@ import { useCurrentWorkspace } from "@multica/core/paths";
 import { useFeatureEnabled } from "@multica/core/config";
 import { PLUGINS_V1_FLAG } from "@multica/core/feature-flags";
 import { cn } from "@multica/ui/lib/utils";
+import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../i18n";
 import { isDesktopShell } from "../platform/local-directory";
 import { IssueSidebarSectionHeader } from "../issues/components/issue-sidebar-section";
@@ -20,9 +21,9 @@ import { PluginSurfaceFrame } from "./plugin-surface-frame";
  * left open in a stale tab stops working even though this component never
  * re-rendered.
  */
-export function PluginPanelSection({ issueId }: { issueId: string }) {
+export function PluginPanelSection({ issueId, projectId, type = "issue_panel" }: { issueId?: string; projectId?: string; type?: "issue_panel" | "project_panel" | "workspace_panel" }) {
   const { t } = useT("issues");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(type === "issue_panel");
   const platform = isDesktopShell() ? "desktop" : "web";
   const workspace = useCurrentWorkspace();
   const wsId = workspace?.id ?? "";
@@ -36,42 +37,54 @@ export function PluginPanelSection({ issueId }: { issueId: string }) {
       .filter((installation) => installation.enabled === true)
       .flatMap((installation) =>
         installation.surfaces
-          .filter((surface) => surface.type === "issue_panel")
+          .filter((surface) => surface.type === type)
           // An empty list means "anywhere"; a declared list is a filter, not a
           // hint, or a desktop-only panel renders on web anyway.
           .filter((surface) => (surface.platforms ?? []).length === 0 || (surface.platforms ?? []).includes(platform))
           .map((surface) => ({ installation, surface })),
       );
-  }, [data, platform]);
+  }, [data, platform, type]);
 
   if (!pluginsEnabled || panels.length === 0) return null;
 
   return (
     <section>
-      <IssueSidebarSectionHeader title={t(($) => $.plugins.panels)} open={open} onOpenChange={setOpen} count={panels.length} />
-      <div
-        inert={!open}
-        aria-hidden={!open}
-        style={{ visibility: open ? "visible" : "hidden" }}
-        className={cn(
-          "grid transition-[grid-template-rows,opacity,visibility] duration-[180ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div className="space-y-2 px-2">
-            {panels.map(({ installation, surface }) => (
-              <PluginSurfaceFrame
-                key={`${installation.id}:${surface.key}`}
-                wsId={wsId}
-                installation={installation}
-                surface={surface}
-                issueId={issueId}
-              />
-            ))}
+      {type === "issue_panel" ? (
+        <IssueSidebarSectionHeader title={t(($) => $.plugins.panels)} open={open} onOpenChange={setOpen} count={panels.length} />
+      ) : (
+        <>
+          <h3 className="px-0.5 text-caption font-medium text-muted-foreground">{t(($) => $.plugins.panels)}</h3>
+          <Button type="button" variant="outline" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {panels.map(({ surface }) => surface.name).join(" · ")}
+          </Button>
+        </>
+      )}
+      {(type === "issue_panel" || open) && (
+        <div
+          inert={!open}
+          aria-hidden={!open}
+          style={{ visibility: open ? "visible" : "hidden" }}
+          className={cn(
+            "grid transition-[grid-template-rows,opacity,visibility] duration-[180ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
+            open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="space-y-2 px-2">
+              {panels.map(({ installation, surface }) => (
+                <PluginSurfaceFrame
+                  key={`${installation.id}:${surface.key}`}
+                  wsId={wsId}
+                  installation={installation}
+                  surface={surface}
+                  issueId={issueId}
+                  projectId={projectId}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

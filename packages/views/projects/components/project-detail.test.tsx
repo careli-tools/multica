@@ -14,6 +14,12 @@ import { useProjectTabStore } from "@multica/core/projects/tab-store";
 import { getIssueSurfaceViewStore, useIssuesScopeStore } from "@multica/core/issues/stores";
 import { ProjectDetail } from "./project-detail";
 
+vi.mock("../../plugins/plugin-panel-section", () => ({
+  PluginPanelSection: ({ type, projectId }: { type: string; projectId?: string }) => (
+    <div data-testid="plugin-context-mount" data-type={type} data-project={projectId} />
+  ),
+}));
+
 const mocks = vi.hoisted(() => ({
   role: "admin",
   isMobile: false,
@@ -364,6 +370,9 @@ describe("ProjectDetail tabs", () => {
     const properties = within(sidebar).getByTestId("project-properties");
     expect(within(properties).getByRole("button", { name: "No lead" })).toBeInTheDocument();
     expect(within(sidebar).getByTestId("project-insights")).toBeInTheDocument();
+    const contextMount = within(sidebar).getByTestId("plugin-context-mount");
+    expect(contextMount).toHaveAttribute("data-type", "project_panel");
+    expect(contextMount).toHaveAttribute("data-project", PROJECT.id);
     expect(
       properties.compareDocumentPosition(within(sidebar).getByTestId("project-insights")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
